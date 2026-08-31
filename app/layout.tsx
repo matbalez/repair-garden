@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Repair Garden",
   description:
-    "Wound a tiny digital organism, fork its history, and discover how identical presents can grow into different futures.",
+    "Compare two matched digital organisms and test how one hidden-state perturbation changes later lesion-local repair.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

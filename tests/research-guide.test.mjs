@@ -77,11 +77,14 @@ test("the guide sends experiment context and returns model text", async () => {
         body: JSON.stringify({
           messages: [{ role: "user", content: "Is this learning?" }],
           context: {
-            stage: "cut-twins",
+            stage: "perturbed",
             visibleDifference: 0,
+            regionalDifference: 0,
             targetDifference: 0.27,
             leftTarget: "bloom",
             rightTarget: "mote",
+            repairScope: "damaged region only",
+            protocolMatched: true,
           },
         }),
       }),
@@ -89,8 +92,10 @@ test("the guide sends experiment context and returns model text", async () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { reply: "Mote is not learning." });
-    assert.match(sentBody.instructions, /Stage: cut-twins/);
+    assert.match(sentBody.instructions, /Stage: perturbed/);
     assert.match(sentBody.instructions, /Hidden target difference: 27%/);
+    assert.match(sentBody.instructions, /Regeneration difference inside the shared lesion: 0%/);
+    assert.match(sentBody.instructions, /Repair update scope: damaged region only/);
     assert.equal(sentBody.store, false);
   } finally {
     globalThis.fetch = previousFetch;

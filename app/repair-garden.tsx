@@ -5,10 +5,11 @@ import {
   ArrowRight,
   BookOpen,
   Bot,
-  Eye,
+  CirclePause,
   FlaskConical,
-  GitFork,
+  Info,
   LoaderCircle,
+  LockKeyhole,
   MessageCircle,
   Pause,
   Play,
@@ -21,7 +22,6 @@ import {
 } from "lucide-react";
 import {
   type FormEvent,
-  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useRef,
@@ -29,52 +29,58 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   type GardenLab,
-  type GardenPoint,
   type GardenShape,
   type GardenState,
   createGardenLab,
   fieldDifference,
   gardenMetrics,
+  maskedFieldDifference,
 } from "@/lib/garden-model";
 import { RESEARCH_SOURCES } from "@/lib/research-sources";
 
 type Stage =
-  | "meet"
-  | "watching"
-  | "repaired"
-  | "twins"
-  | "cut-twins"
-  | "diverging"
-  | "aha"
-  | "lab";
-
-interface RunPlan {
-  branchIds: string[];
-  remaining: number;
-  onDone?: () => void;
-}
+  | "baseline"
+  | "first-wounded"
+  | "first-repairing"
+  | "matched"
+  | "perturbed"
+  | "second-wounded"
+  | "comparing"
+  | "result";
 
 interface GuideChatMessage {
   role: "user" | "assistant";
   content: string;
 }
 
-const PRESET_WOUND: GardenPoint[] = [
-  { x: 39, y: 13 },
-  { x: 39, y: 16 },
-  { x: 40, y: 19 },
-  { x: 40, y: 22 },
-];
+const REPAIR_STEPS = 48;
+const PRESET_WOUND = {
+  points: [
+    { x: 39, y: 13 },
+    { x: 39, y: 16 },
+    { x: 40, y: 19 },
+    { x: 40, y: 22 },
+  ],
+  radius: 4.4,
+};
 
 const SHAPE_LABELS: Record<GardenShape, string> = {
-  mote: "Mote",
-  bloom: "Bloom",
-  twin: "Twin",
+  mote: "mote",
+  bloom: "bloom",
+  twin: "twin",
 };
 
 function cloneView(state: GardenState): GardenState {
@@ -83,6 +89,8 @@ function cloneView(state: GardenState): GardenState {
     body: new Float32Array(state.body),
     target: new Float32Array(state.target),
     newness: new Float32Array(state.newness),
+    woundMask: new Float32Array(state.woundMask),
+    repairMask: new Float32Array(state.repairMask),
   };
 }
 
@@ -94,26 +102,163 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function PaperIntro({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const paper = RESEARCH_SOURCES.find((source) => source.id === "paper");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="paper-modal" showCloseButton={false}>
+        <DialogHeader>
+          <p className="modal-kicker">Before you begin · 2 minute experiment</p>
+          <DialogTitle>How can a living system carry its future?</DialogTitle>
+          <DialogDescription>
+            A guided thought experiment inspired by <em>Open Questions about
+            Time and Self-reference in Living Systems</em>.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="paper-summary">
+          <p>
+            The paper asks how living systems remain themselves while they
+            develop, repair, learn, and even change the processes that change
+            them. Its central proposal is that life may organize traces of the
+            past and possibilities for the future so they can affect action in
+            the present.
+          </p>
+          <p>
+            Repair Garden brings one narrow part of that agenda to life: two
+            visibly identical systems can carry different internal organization,
+            and a controlled intervention can reveal whether that organization
+            causally changes later repair.
+          </p>
+        </div>
+
+        <div className="modal-causal-chain" aria-label="Experiment logic">
+          <span>Same body</span>
+          <ArrowRight aria-hidden="true" />
+          <span>Change one hidden state</span>
+          <ArrowRight aria-hidden="true" />
+          <span>Repeat the wound</span>
+          <ArrowRight aria-hidden="true" />
+          <span>Compare repair</span>
+        </div>
+
+        <div className="modal-boundary">
+          <Info aria-hidden="true" />
+          <p>
+            <strong>A model, not a biological claim.</strong> The internal target
+            in this toy is engineered and explicit. The experiment does not show
+            that real cells store a picture of the body or that Mote learns.
+          </p>
+        </div>
+
+        <DialogFooter className="paper-modal-actions">
+          {paper ? (
+            <Button asChild variant="outline">
+              <a href={paper.href} target="_blank" rel="noreferrer">
+                <BookOpen aria-hidden="true" /> Read the full PDF
+              </a>
+            </Button>
+          ) : null}
+          <DialogClose asChild>
+            <Button>
+              Enter the experiment <ArrowRight aria-hidden="true" />
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TargetMiniMap({ state }: { state: GardenState }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const width = canvas.width;
+    const height = canvas.height;
+    context.clearRect(0, 0, width, height);
+    const cellWidth = width / state.width;
+    const cellHeight = height / state.height;
+    for (let row = 0; row < state.height; row += 1) {
+      for (let column = 0; column < state.width; column += 1) {
+        const target = state.target[row * state.width + column] ?? 0;
+        if (target < 0.04) continue;
+        context.fillStyle = `rgba(201, 150, 255, ${0.18 + target * 0.7})`;
+        context.fillRect(
+          column * cellWidth,
+          row * cellHeight,
+          cellWidth + 0.35,
+          cellHeight + 0.35,
+        );
+      }
+    }
+  }, [state]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="target-mini-map"
+      width={96}
+      height={72}
+      aria-label={`${SHAPE_LABELS[state.targetShape]} target map`}
+      role="img"
+    />
+  );
+}
+
+function InternalStateCard({
+  state,
+  changed,
+}: {
+  state: GardenState;
+  changed: boolean;
+}) {
+  return (
+    <section
+      className={`internal-state-card ${changed ? "is-perturbed" : ""}`}
+      aria-label={`Internal next target shape is ${state.targetShape}`}
+    >
+      <TargetMiniMap state={state} />
+      <div className="internal-copy">
+        <span className="internal-label">Internal future-state</span>
+        <code>
+          next_target_shape <b>= &quot;{SHAPE_LABELS[state.targetShape]}&quot;</b>
+        </code>
+        <small>Distinct from visible tissue</small>
+      </div>
+      <span className="lock-pill">
+        <LockKeyhole aria-hidden="true" /> locked
+      </span>
+    </section>
+  );
+}
+
 function OrganismCanvas({
   state,
   label,
-  caption,
+  roleLabel,
   showTarget,
-  woundEnabled = false,
-  signalKey = 0,
-  onWound,
+  perturbed,
+  pulseKey = 0,
 }: {
   state: GardenState;
   label: string;
-  caption: string;
+  roleLabel: string;
   showTarget: boolean;
-  woundEnabled?: boolean;
-  signalKey?: number;
-  onWound?: (points: GardenPoint[]) => void;
+  perturbed: boolean;
+  pulseKey?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [drawing, setDrawing] = useState(false);
-  const [trail, setTrail] = useState<GardenPoint[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -167,27 +312,13 @@ function OrganismCanvas({
           const index = row * state.width + column;
           const target = state.target[index] ?? 0;
           if (target < 0.08) continue;
-          context.fillStyle = `rgba(174, 105, 255, ${target * 0.1})`;
+          context.fillStyle = `rgba(185, 112, 255, ${target * 0.12})`;
           context.fillRect(
             column * cellWidth,
             row * cellHeight,
             cellWidth + 0.5,
             cellHeight + 0.5,
           );
-          const right = state.target[index + 1] ?? 0;
-          const down = state.target[index + state.width] ?? 0;
-          if (
-            target > 0.45 &&
-            (right < 0.45 || down < 0.45 || column === state.width - 1)
-          ) {
-            context.fillStyle = "rgba(207, 153, 255, 0.9)";
-            context.fillRect(
-              column * cellWidth,
-              row * cellHeight,
-              Math.max(1, cellWidth * 0.5),
-              Math.max(1, cellHeight * 0.5),
-            );
-          }
         }
       }
     }
@@ -202,9 +333,7 @@ function OrganismCanvas({
         const red = Math.round(52 + newness * 196);
         const green = Math.round(208 + newness * 25);
         const blue = Math.round(197 - newness * 92);
-        context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${
-          0.08 + body * 0.83
-        })`;
+        context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${0.08 + body * 0.83})`;
         context.fillRect(
           column * cellWidth,
           row * cellHeight,
@@ -215,59 +344,28 @@ function OrganismCanvas({
     }
     context.globalCompositeOperation = "source-over";
 
-    if (trail.length > 0) {
-      context.strokeStyle = "rgba(255, 93, 129, 0.92)";
-      context.shadowColor = "rgba(255, 65, 122, 0.72)";
-      context.shadowBlur = 14;
-      context.lineWidth = Math.max(5, width * 0.022);
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.beginPath();
-      trail.forEach((point, index) => {
-        const x = (point.x + 0.5) * cellWidth;
-        const y = (point.y + 0.5) * cellHeight;
-        if (index === 0) context.moveTo(x, y);
-        else context.lineTo(x, y);
-      });
-      context.stroke();
-      context.shadowBlur = 0;
+    for (let row = 0; row < state.height; row += 1) {
+      for (let column = 0; column < state.width; column += 1) {
+        const index = row * state.width + column;
+        const wounded = state.woundMask[index] ?? 0;
+        const body = state.body[index] ?? 0;
+        if (wounded < 0.5 || body > 0.14) continue;
+        context.fillStyle = "rgba(255, 83, 123, 0.16)";
+        context.fillRect(
+          column * cellWidth,
+          row * cellHeight,
+          cellWidth + 0.5,
+          cellHeight + 0.5,
+        );
+      }
     }
-  }, [showTarget, state, trail]);
-
-  const pointFromEvent = useCallback(
-    (event: ReactPointerEvent<HTMLCanvasElement>) => {
-      const box = event.currentTarget.getBoundingClientRect();
-      return {
-        x: Math.max(
-          0,
-          Math.min(
-            state.width - 1,
-            Math.floor(((event.clientX - box.left) / box.width) * state.width),
-          ),
-        ),
-        y: Math.max(
-          0,
-          Math.min(
-            state.height - 1,
-            Math.floor(((event.clientY - box.top) / box.height) * state.height),
-          ),
-        ),
-      };
-    },
-    [state.height, state.width],
-  );
-
-  const finishWound = useCallback(() => {
-    if (!drawing) return;
-    setDrawing(false);
-    if (trail.length > 0) onWound?.(trail);
-    setTrail([]);
-  }, [drawing, onWound, trail]);
+  }, [showTarget, state]);
 
   const metrics = gardenMetrics(state);
+  const repair = Math.max(0, Math.min(1, 1 - metrics.error));
 
   return (
-    <article className="organism-card">
+    <article className={`organism-card ${perturbed ? "is-perturbed" : ""}`}>
       <header className="organism-label">
         <span>
           <i className="live-dot" aria-hidden="true" />
@@ -278,293 +376,149 @@ function OrganismCanvas({
       <div className="dish-wrap">
         <canvas
           ref={canvasRef}
-          className={`organism-canvas ${woundEnabled ? "is-enabled" : ""}`}
+          className="organism-canvas"
           role="img"
-          tabIndex={woundEnabled ? 0 : -1}
-          aria-label={`${label}. ${caption}. Target mismatch ${percent(
-            metrics.error,
-          )}. ${
-            woundEnabled
-              ? "Drag across the organism or press Enter to make a wound."
-              : ""
-          }`}
-          onPointerDown={(event) => {
-            if (!woundEnabled) return;
-            event.currentTarget.setPointerCapture(event.pointerId);
-            setDrawing(true);
-            setTrail([pointFromEvent(event)]);
-          }}
-          onPointerMove={(event) => {
-            if (!woundEnabled || !drawing) return;
-            const point = pointFromEvent(event);
-            setTrail((current) => {
-              const previous = current[current.length - 1];
-              if (previous?.x === point.x && previous.y === point.y) {
-                return current;
-              }
-              return [...current, point];
-            });
-          }}
-          onPointerUp={finishWound}
-          onPointerCancel={finishWound}
-          onKeyDown={(event) => {
-            if (!woundEnabled) return;
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onWound?.(PRESET_WOUND);
-            }
-          }}
+          aria-label={`${label}. ${roleLabel}. Repair ${percent(repair)}. Internal next target is ${state.targetShape}.`}
         />
-        {signalKey > 0 ? (
-          <span key={signalKey} className="signal-wave" aria-hidden="true" />
+        {pulseKey > 0 ? (
+          <span key={pulseKey} className="signal-wave" aria-hidden="true" />
         ) : null}
+        <span className="visible-layer-label">Visible tissue</span>
       </div>
-      <footer>
-        <span>{caption}</span>
-        <span>{percent(metrics.error)} target mismatch</span>
-      </footer>
+      <div className="organism-status">
+        <span>{roleLabel}</span>
+        <span>{percent(repair)} lesion repair</span>
+      </div>
+      <InternalStateCard state={state} changed={perturbed} />
     </article>
-  );
-}
-
-function HealingMeter({ state }: { state: GardenState }) {
-  const error = gardenMetrics(state).error;
-  const healed = Math.max(0, Math.min(1, 1 - error));
-  return (
-    <div className="healing-meter" aria-label={`${percent(healed)} repaired`}>
-      <div className="meter-copy">
-        <span>Repair</span>
-        <strong>{percent(healed)}</strong>
-      </div>
-      <div className="meter-track">
-        <span style={{ width: percent(healed) }} />
-      </div>
-    </div>
   );
 }
 
 function StageNarration({
   stage,
-  rootState,
   running,
-  onPresetWound,
-  onFork,
-  onPulse,
-  onWoundTwins,
-  onReveal,
+  remaining,
+  regionalDifference,
 }: {
   stage: Stage;
-  rootState: GardenState;
   running: boolean;
-  onPresetWound: () => void;
-  onFork: () => void;
-  onPulse: () => void;
-  onWoundTwins: () => void;
-  onReveal: () => void;
+  remaining: number;
+  regionalDifference: number;
 }) {
-  if (stage === "meet") {
-    return (
-      <div className="narration-card">
-        <p className="eyebrow">01 · An organism</p>
-        <h1>Meet Mote.</h1>
-        <p>
-          Mote is a transparent digital body, not a living thing. Its cells use
-          a fixed local repair rule. Make a cut, then watch a large-scale form
-          return from many small neighborhood updates.
-        </p>
-        <Button className="guide-action" onClick={onPresetWound}>
-          <Scissors aria-hidden="true" /> Make a clean wound
-        </Button>
-        <p className="micro-copy">
-          Keyboard: focus the dish and press Enter. No score, no failure.
-        </p>
-      </div>
-    );
-  }
-
-  if (stage === "watching") {
-    return (
-      <div className="narration-card">
-        <p className="eyebrow">02 · Repair</p>
-        <h1>Let go. Watch.</h1>
-        <p>
-          No cell sees the whole Mote. Yet the engineered system reduces the
-          gap between damaged tissue and a hidden target. Biology can also
-          repair robustly; whether it uses anything like this target is open.
-        </p>
-        <HealingMeter state={rootState} />
-        <div className="status-note">
-          <Activity aria-hidden="true" />
-          {running ? "Local updates are propagating" : "Experiment paused"}
-        </div>
-      </div>
-    );
-  }
-
-  if (stage === "repaired") {
-    return (
-      <div className="narration-card">
-        <p className="eyebrow">03 · A question</p>
-        <h1>Mote came back.</h1>
-        <p className="lead-question">
-          Does the current shape fully determine what happens next?
-        </p>
-        <p>
-          We can test that by forking this exact moment. Both branches will
-          share the same past and the same visible body.
-        </p>
-        <Button className="guide-action" onClick={onFork}>
-          <GitFork aria-hidden="true" /> Fork this moment
-        </Button>
-      </div>
-    );
-  }
-
-  if (stage === "twins") {
-    return (
-      <div className="narration-card">
-        <p className="eyebrow">04 · A controlled intervention</p>
-        <h1>These Motes look identical.</h1>
-        <p>
-          Apply a developmental signal to the left branch only. In this toy,
-          the signal directly rewrites an internal target field while changing
-          no visible cell. The right branch is the untreated control.
-        </p>
-        <div className="fact-row">
-          <span>Visible difference</span>
-          <strong>0.0%</strong>
-        </div>
-        <Button className="guide-action signal-button" onClick={onPulse}>
-          <Radio aria-hidden="true" /> Signal the left branch
-        </Button>
-        <p className="micro-copy">
-          This is an experimenter-imposed target rewrite—not learning by Mote.
-        </p>
-      </div>
-    );
-  }
-
-  if (stage === "cut-twins") {
-    return (
-      <div className="narration-card">
-        <p className="eyebrow">05 · Hidden control state</p>
-        <h1>The signal changed no tissue.</h1>
-        <p>
-          The left branch now carries a different engineered target; the right
-          branch does not. Give them the same wound and update schedule to test
-          whether that hidden difference is causally active.
-        </p>
-        <div className="status-note violet">
-          <Sparkles aria-hidden="true" /> Internal target changed · visible body
-          unchanged
-        </div>
-        <Button className="guide-action" onClick={onWoundTwins}>
-          <Scissors aria-hidden="true" /> Wound both identically
-        </Button>
-      </div>
-    );
-  }
-
-  if (stage === "diverging") {
-    return (
-      <div className="narration-card">
-        <p className="eyebrow">06 · Counterfactual</p>
-        <h1>Same wound. Watch both.</h1>
-        <p>
-          The visible starting state, wound, timing, and local update rule all
-          match. The target field is the single manipulated variable.
-        </p>
-        <div className="status-note">
-          <Activity aria-hidden="true" /> Two deterministic futures are running
-        </div>
-      </div>
-    );
-  }
-
-  if (stage === "aha") {
-    return (
-      <div className="narration-card insight-panel">
-        <p className="eyebrow">The hinge</p>
-        <h1>Same shape. Same wound. Different future.</h1>
-        <p className="insight-copy">
-          The signal changed a hidden controller, not the visible present.
-        </p>
-        <p>
-          The narrow lesson: a snapshot can be insufficient for prediction,
-          and intervention can distinguish mechanisms hidden behind the same
-          appearance. This does not show that organisms store shape templates.
-        </p>
-        <Button className="guide-action" onClick={onReveal}>
-          <Eye aria-hidden="true" /> Reveal the hidden state
-        </Button>
-      </div>
-    );
-  }
+  const copy: Record<
+    Stage,
+    { eyebrow: string; title: string; body: string; note: string }
+  > = {
+    baseline: {
+      eyebrow: "01 · Matched starting state",
+      title: "Two Motes. One history.",
+      body: "Both branches begin with the same visible tissue, the same clock, and the same locked internal future-state. The left is reserved for treatment; the right remains the control.",
+      note: "Nothing differs yet—not the body, target, wound, or schedule.",
+    },
+    "first-wounded": {
+      eyebrow: "02 · Calibration wound",
+      title: "Same damage. Paused.",
+      body: "An identical lesion was applied to both Motes. Advance them together to verify that matched bodies and matched internal states produce matched repair.",
+      note: "Only cells inside the lesion mask are allowed to update.",
+    },
+    "first-repairing": {
+      eyebrow: "02 · Calibration repair",
+      title: "Advance in lockstep.",
+      body: "Every click applies the same local cellular update to both sides at the same timepoint. Tissue outside the damaged region is frozen.",
+      note: running
+        ? `${remaining} synchronized steps remain in this schedule.`
+        : "Paused. Compare both sides before the next step.",
+    },
+    matched: {
+      eyebrow: "03 · Matched history confirmed",
+      title: "The control works.",
+      body: "After the same wound and the same repair schedule, the two visible bodies still match. Now change exactly one internal variable on the left.",
+      note: "This first repair is calibration, not evidence of learning.",
+    },
+    perturbed: {
+      eyebrow: "04 · Selective perturbation",
+      title: "One hidden state changed.",
+      body: "The left next_target_shape is now bloom. The right remains mote. No visible tissue changed, and both histories remain synchronized up to this intervention.",
+      note: "Manipulated variable: left.next_target_shape only.",
+    },
+    "second-wounded": {
+      eyebrow: "05 · Matched challenge",
+      title: "Same later wound. Paused again.",
+      body: "Both Motes received the same lesion at the same coordinates and timepoint. Their visible bodies still match; only the locked internal future-state differs.",
+      note: "Step once, step five times, or continue the shared schedule.",
+    },
+    comparing: {
+      eyebrow: "05 · Causal comparison",
+      title: "Watch the lesion—not the whole body.",
+      body: "Both sides receive the same update schedule. Because only damaged cells may change, any emerging difference stays localized to the shared wound region.",
+      note: running
+        ? `${remaining} synchronized steps remain.`
+        : "Paused at the same timepoint on both sides.",
+    },
+    result: {
+      eyebrow: "The causal result",
+      title: "Same wound. Different repair.",
+      body: `The regeneration paths differ by ${percent(regionalDifference)} inside the same lesion region. The targeted hidden-state perturbation is causally active in this engineered toy.`,
+      note: "This demonstrates repair under hidden-state perturbation—not learning and not a literal cellular picture of anatomy.",
+    },
+  };
+  const current = copy[stage];
 
   return (
-    <div className="narration-card lab-guide">
-      <p className="eyebrow">Open lab</p>
-      <h1>Now intervene.</h1>
-      <p>
-        The violet contour is the separable target field the signal rewrote.
-        Both branches may reach 0% error relative to their own targets; that is
-        successful control, not evidence that either one learned.
-      </p>
-      <div className="lab-question">
-        <FlaskConical aria-hidden="true" />
-        <span>
-          In real organisms, is repair guided by a separable target, a
-          distributed attractor, or some mixture of both?
-        </span>
+    <div className={`narration-card ${stage === "result" ? "insight-panel" : ""}`}>
+      <p className="eyebrow">{current.eyebrow}</p>
+      <h1>{current.title}</h1>
+      <p>{current.body}</p>
+      <div className={stage === "perturbed" ? "status-note violet" : "status-note"}>
+        {stage === "perturbed" ? (
+          <Sparkles aria-hidden="true" />
+        ) : stage === "result" ? (
+          <FlaskConical aria-hidden="true" />
+        ) : running ? (
+          <Activity aria-hidden="true" />
+        ) : (
+          <CirclePause aria-hidden="true" />
+        )}
+        {current.note}
       </div>
-      <p className="micro-copy">
-        That is the scientific question. This simulation makes the competing
-        ideas manipulable; it does not settle which biology uses.
-      </p>
     </div>
   );
 }
 
 function ResearchGuide({
   stage,
-  rootState,
-  alternativeState,
+  leftState,
+  rightState,
   running,
+  remaining,
   showTarget,
   visibleDifference,
   targetDifference,
-  onPresetWound,
-  onFork,
-  onSignal,
-  onWoundTwins,
-  onReveal,
+  regionalDifference,
 }: {
   stage: Stage;
-  rootState: GardenState;
-  alternativeState: GardenState | null;
+  leftState: GardenState;
+  rightState: GardenState;
   running: boolean;
+  remaining: number;
   showTarget: boolean;
   visibleDifference: number;
   targetDifference: number;
-  onPresetWound: () => void;
-  onFork: () => void;
-  onSignal: () => void;
-  onWoundTwins: () => void;
-  onReveal: () => void;
+  regionalDifference: number;
 }) {
   const [messages, setMessages] = useState<GuideChatMessage[]>([]);
   const [question, setQuestion] = useState("");
   const [isAsking, setIsAsking] = useState(false);
 
   const quickQuestions: Record<Stage, string[]> = {
-    meet: ["What makes this a model of repair?", "Is Mote alive?"],
-    watching: ["How can local rules make a whole shape?", "Where is the target?"],
-    repaired: ["What would count as memory here?", "Why fork the same moment?"],
-    twins: ["What exactly will the signal change?", "Why signal only one branch?"],
-    "cut-twins": ["Is this learning?", "What is the control condition?"],
-    diverging: ["What should I watch for?", "What conclusion would be too strong?"],
-    aha: ["What did this experiment establish?", "Could an attractor do this too?"],
-    lab: ["How would we test real learning?", "What should the next organism model?"],
+    baseline: ["What does same history mean here?", "Why show the hidden state?"],
+    "first-wounded": ["Why pause after the wound?", "What cells can update?"],
+    "first-repairing": ["How is this a cellular automaton?", "What is held constant?"],
+    matched: ["What did the first repair establish?", "Is this learning?"],
+    perturbed: ["What exactly changed on the left?", "Why is the body unchanged?"],
+    "second-wounded": ["What outcome should I compare?", "What is the control?"],
+    comparing: ["Why only examine the lesion?", "What conclusion is too strong?"],
+    result: ["What did this establish?", "How does this relate to the paper?"],
   };
 
   const askGuide = async (event?: FormEvent, suggestedQuestion?: string) => {
@@ -586,11 +540,15 @@ function ResearchGuide({
           context: {
             stage,
             visibleDifference,
+            regionalDifference,
             targetDifference,
-            leftTarget: alternativeState?.targetShape,
-            rightTarget: rootState.targetShape,
+            leftTarget: leftState.targetShape,
+            rightTarget: rightState.targetShape,
             targetsRevealed: showTarget,
             running,
+            stepsRemaining: remaining,
+            repairScope: "damaged region only",
+            protocolMatched: true,
           },
         }),
       });
@@ -621,9 +579,7 @@ function ResearchGuide({
   return (
     <aside className="guide-panel research-guide" aria-label="Garden Guide">
       <header className="guide-header">
-        <span className="guide-avatar" aria-hidden="true">
-          <Bot />
-        </span>
+        <span className="guide-avatar" aria-hidden="true"><Bot /></span>
         <div>
           <strong>Garden Guide</strong>
           <small>Paper-grounded science companion</small>
@@ -634,13 +590,9 @@ function ResearchGuide({
       <div className="guide-scroll" aria-live="polite">
         <StageNarration
           stage={stage}
-          rootState={rootState}
           running={running}
-          onPresetWound={onPresetWound}
-          onFork={onFork}
-          onPulse={onSignal}
-          onWoundTwins={onWoundTwins}
-          onReveal={onReveal}
+          remaining={remaining}
+          regionalDifference={regionalDifference}
         />
 
         {messages.length > 0 ? (
@@ -657,9 +609,7 @@ function ResearchGuide({
             {isAsking ? (
               <div className="guide-message assistant is-thinking">
                 <span>Guide</span>
-                <p>
-                  <LoaderCircle aria-hidden="true" /> Reading this moment…
-                </p>
+                <p><LoaderCircle aria-hidden="true" /> Reading this moment…</p>
               </div>
             ) : null}
           </div>
@@ -668,7 +618,11 @@ function ResearchGuide({
 
       <div className="quick-questions" aria-label="Suggested questions">
         {quickQuestions[stage].map((prompt) => (
-          <button key={prompt} type="button" onClick={() => askGuide(undefined, prompt)}>
+          <button
+            key={prompt}
+            type="button"
+            onClick={() => askGuide(undefined, prompt)}
+          >
             {prompt}
           </button>
         ))}
@@ -706,420 +660,421 @@ function ResearchGuide({
   );
 }
 
+function ExperimentControls({
+  stage,
+  running,
+  remaining,
+  showTarget,
+  onWound,
+  onPerturb,
+  onStep,
+  onToggleRun,
+  onShowTarget,
+}: {
+  stage: Stage;
+  running: boolean;
+  remaining: number;
+  showTarget: boolean;
+  onWound: () => void;
+  onPerturb: () => void;
+  onStep: (count: number) => void;
+  onToggleRun: () => void;
+  onShowTarget: (show: boolean) => void;
+}) {
+  const repairStage = [
+    "first-wounded",
+    "first-repairing",
+    "second-wounded",
+    "comparing",
+  ].includes(stage);
+  const completed = REPAIR_STEPS - remaining;
+
+  return (
+    <section className="experiment-controls" aria-label="Experiment controls">
+      <div className="control-explanation">
+        <span className="control-kicker">Synchronized protocol</span>
+        <strong>
+          {repairStage
+            ? `Step ${completed} of ${REPAIR_STEPS}`
+            : stage === "baseline"
+              ? "Ready for calibration"
+              : stage === "matched"
+                ? "Matched history confirmed"
+                : stage === "perturbed"
+                  ? "One variable changed"
+                  : "Comparison complete"}
+        </strong>
+        <small>Update scope · damaged cells only</small>
+      </div>
+
+      <div className="control-actions">
+        {stage === "baseline" ? (
+          <Button onClick={onWound}>
+            <Scissors aria-hidden="true" /> Wound both identically
+          </Button>
+        ) : null}
+        {stage === "matched" ? (
+          <Button className="perturb-button" onClick={onPerturb}>
+            <Radio aria-hidden="true" /> Perturb left hidden state
+          </Button>
+        ) : null}
+        {stage === "perturbed" ? (
+          <Button onClick={onWound}>
+            <Scissors aria-hidden="true" /> Apply the same later wound
+          </Button>
+        ) : null}
+        {repairStage ? (
+          <>
+            <Button variant="outline" onClick={() => onStep(1)} disabled={running}>
+              <StepForward aria-hidden="true" /> Step +1
+            </Button>
+            <Button variant="outline" onClick={() => onStep(5)} disabled={running}>
+              <StepForward aria-hidden="true" /> Step +5
+            </Button>
+            <Button onClick={onToggleRun}>
+              {running ? (
+                <><Pause aria-hidden="true" /> Pause</>
+              ) : (
+                <><Play aria-hidden="true" /> Continue</>
+              )}
+            </Button>
+          </>
+        ) : null}
+      </div>
+
+      <label className="target-overlay-toggle">
+        <span>
+          Target overlay
+          <small>Violet map, separate from tissue</small>
+        </span>
+        <Switch
+          checked={showTarget}
+          onCheckedChange={onShowTarget}
+          aria-label="Show target overlay on both motes"
+        />
+      </label>
+    </section>
+  );
+}
+
 export function RepairGarden() {
-  const [lab] = useState(() => createGardenLab());
-  const rootBranchId = lab.rootBranchId;
+  const [{ lab, leftBranchId, rightBranchId }] = useState(() => {
+    const nextLab = createGardenLab();
+    const right = nextLab.rootBranchId;
+    const left = nextLab.fork(right, { label: "Left treatment" });
+    return { lab: nextLab, leftBranchId: left, rightBranchId: right };
+  });
 
-  const [stage, setStage] = useState<Stage>("meet");
-  const [rootState, setRootState] = useState(() =>
-    getBranchState(lab, rootBranchId),
-  );
-  const [alternativeBranchId, setAlternativeBranchId] = useState<string | null>(
-    null,
-  );
-  const [alternativeState, setAlternativeState] = useState<GardenState | null>(
-    null,
-  );
+  const [introOpen, setIntroOpen] = useState(true);
+  const [stage, setStage] = useState<Stage>("baseline");
+  const [leftState, setLeftState] = useState(() => getBranchState(lab, leftBranchId));
+  const [rightState, setRightState] = useState(() => getBranchState(lab, rightBranchId));
+  const [remaining, setRemaining] = useState(0);
   const [running, setRunning] = useState(false);
-  const [speed, setSpeed] = useState(1);
   const [showTarget, setShowTarget] = useState(false);
-  const [signalKey, setSignalKey] = useState(0);
-  const runRef = useRef<RunPlan | null>(null);
+  const [pulseKey, setPulseKey] = useState(0);
 
-  const syncViews = useCallback(
-    (alternativeId = alternativeBranchId) => {
-      setRootState(getBranchState(lab, rootBranchId));
-      if (alternativeId) {
-        setAlternativeState(getBranchState(lab, alternativeId));
+  const syncViews = useCallback(() => {
+    setLeftState(getBranchState(lab, leftBranchId));
+    setRightState(getBranchState(lab, rightBranchId));
+  }, [lab, leftBranchId, rightBranchId]);
+
+  const finishSchedule = useCallback(
+    (repairStage: Stage) => {
+      setRunning(false);
+      setRemaining(0);
+      setStage(
+        repairStage === "first-wounded" || repairStage === "first-repairing"
+          ? "matched"
+          : "result",
+      );
+      syncViews();
+    },
+    [syncViews],
+  );
+
+  const stepPair = useCallback(
+    (count: number) => {
+      if (
+        ![
+          "first-wounded",
+          "first-repairing",
+          "second-wounded",
+          "comparing",
+        ].includes(stage) ||
+        running
+      ) {
+        return;
+      }
+      const actual = Math.min(count, remaining);
+      for (let index = 0; index < actual; index += 1) {
+        lab.step(leftBranchId, { alpha: 0.25 });
+        lab.step(rightBranchId, { alpha: 0.25 });
+      }
+      syncViews();
+      const nextRemaining = remaining - actual;
+      if (nextRemaining <= 0) finishSchedule(stage);
+      else {
+        setRemaining(nextRemaining);
+        setStage(
+          stage === "first-wounded" || stage === "first-repairing"
+            ? "first-repairing"
+            : "comparing",
+        );
       }
     },
-    [alternativeBranchId, lab, rootBranchId],
-  );
-
-  const startRun = useCallback(
-    (branchIds: string[], steps: number, onDone?: () => void) => {
-      runRef.current = { branchIds, remaining: steps, onDone };
-      setRunning(true);
-    },
-    [],
+    [
+      finishSchedule,
+      lab,
+      leftBranchId,
+      remaining,
+      rightBranchId,
+      running,
+      stage,
+      syncViews,
+    ],
   );
 
   useEffect(() => {
     if (!running) return;
     const timer = window.setInterval(() => {
-      const plan = runRef.current;
-      if (!plan) return;
-      plan.branchIds.forEach((branchId) => {
-        lab.step(branchId, { alpha: 0.25 });
-      });
-      if (Number.isFinite(plan.remaining)) plan.remaining -= 1;
+      lab.step(leftBranchId, { alpha: 0.25 });
+      lab.step(rightBranchId, { alpha: 0.25 });
       syncViews();
-      if (plan.remaining <= 0) {
-        const onDone = plan.onDone;
-        runRef.current = null;
-        setRunning(false);
-        onDone?.();
-      }
-    }, Math.max(34, 92 / speed));
+      setRemaining((current) => {
+        const next = current - 1;
+        if (next <= 0) {
+          window.clearInterval(timer);
+          finishSchedule(stage);
+          return 0;
+        }
+        return next;
+      });
+    }, 72);
     return () => window.clearInterval(timer);
-  }, [lab, running, speed, syncViews]);
+  }, [finishSchedule, lab, leftBranchId, rightBranchId, running, stage, syncViews]);
 
-  const woundRoot = useCallback(
-    (points: GardenPoint[]) => {
-      if (stage !== "meet") return;
-      lab.intervene(rootBranchId, "wound", { points, radius: 4.4 });
-      syncViews();
-      setStage("watching");
-      startRun([rootBranchId], 35, () => setStage("repaired"));
-    },
-    [lab, rootBranchId, stage, startRun, syncViews],
-  );
-
-  const forkMoment = useCallback(() => {
-    if (stage !== "repaired") return;
-    const branchId = lab.fork(rootBranchId, { label: "Signalled history" });
-    setAlternativeBranchId(branchId);
-    setAlternativeState(getBranchState(lab, branchId));
-    setStage("twins");
-  }, [lab, rootBranchId, stage]);
-
-  const signalLeft = useCallback(() => {
-    if (!alternativeBranchId || stage !== "twins") return;
-    lab.intervene(alternativeBranchId, "rewrite-target", { shape: "bloom" });
-    syncViews(alternativeBranchId);
-    setSignalKey((value) => value + 1);
-    setStage("cut-twins");
-  }, [alternativeBranchId, lab, stage, syncViews]);
-
-  const woundTwins = useCallback(() => {
-    if (
-      !alternativeBranchId ||
-      (stage !== "cut-twins" && stage !== "lab")
-    ) {
-      return;
-    }
-    [alternativeBranchId, rootBranchId].forEach((branchId) => {
-      lab.intervene(branchId, "wound", {
-        points: PRESET_WOUND,
-        radius: 4.4,
-      });
-    });
-    syncViews(alternativeBranchId);
-    if (stage === "cut-twins") {
-      setStage("diverging");
-      startRun([alternativeBranchId, rootBranchId], 47, () => setStage("aha"));
-    } else {
-      startRun([alternativeBranchId, rootBranchId], 32);
-    }
-  }, [
-    alternativeBranchId,
-    lab,
-    rootBranchId,
-    stage,
-    startRun,
-    syncViews,
-  ]);
-
-  const enterLab = useCallback(() => {
-    setShowTarget(true);
-    setStage("lab");
-  }, []);
-
-  const changeTarget = useCallback(
-    (shape: GardenShape) => {
-      if (!alternativeBranchId) return;
-      lab.intervene(alternativeBranchId, "rewrite-target", { shape });
-      syncViews(alternativeBranchId);
-      setSignalKey((value) => value + 1);
-    },
-    [alternativeBranchId, lab, syncViews],
-  );
-
-  const stepBoth = useCallback(() => {
-    if (!alternativeBranchId) return;
+  const woundBoth = useCallback(() => {
+    if (stage !== "baseline" && stage !== "perturbed") return;
+    lab.intervene(leftBranchId, "wound", PRESET_WOUND);
+    lab.intervene(rightBranchId, "wound", PRESET_WOUND);
+    syncViews();
+    setRemaining(REPAIR_STEPS);
     setRunning(false);
-    runRef.current = null;
-    lab.step(alternativeBranchId, { alpha: 0.25 });
-    lab.step(rootBranchId, { alpha: 0.25 });
-    syncViews(alternativeBranchId);
-  }, [alternativeBranchId, lab, rootBranchId, syncViews]);
+    setStage(stage === "baseline" ? "first-wounded" : "second-wounded");
+  }, [lab, leftBranchId, rightBranchId, stage, syncViews]);
+
+  const perturbLeft = useCallback(() => {
+    if (stage !== "matched") return;
+    lab.intervene(leftBranchId, "rewrite-target", { shape: "bloom" });
+    syncViews();
+    setPulseKey((current) => current + 1);
+    setStage("perturbed");
+  }, [lab, leftBranchId, stage, syncViews]);
 
   const toggleRun = useCallback(() => {
-    if (!alternativeBranchId) return;
     if (running) {
       setRunning(false);
-      runRef.current = null;
-    } else {
-      startRun([alternativeBranchId, rootBranchId], Number.POSITIVE_INFINITY);
+      return;
     }
-  }, [alternativeBranchId, rootBranchId, running, startRun]);
+    if (
+      ["first-wounded", "first-repairing", "second-wounded", "comparing"].includes(stage)
+    ) {
+      setStage(
+        stage === "first-wounded" || stage === "first-repairing"
+          ? "first-repairing"
+          : "comparing",
+      );
+      setRunning(true);
+    }
+  }, [running, stage]);
+
+  const visibleDifference = fieldDifference(leftState.body, rightState.body);
+  const targetDifference = fieldDifference(leftState.target, rightState.target);
+  const regionalDifference = maskedFieldDifference(
+    leftState.body,
+    rightState.body,
+    leftState.woundMask,
+    rightState.woundMask,
+  );
+  const perturbed = leftState.targetShape !== rightState.targetShape;
+  const progressIndex =
+    stage === "baseline"
+      ? 0
+      : ["first-wounded", "first-repairing"].includes(stage)
+        ? 1
+        : stage === "matched"
+          ? 2
+          : stage === "perturbed"
+            ? 3
+            : 4;
 
   const reset = () => window.location.reload();
-  const compareMode = [
-    "twins",
-    "cut-twins",
-    "diverging",
-    "aha",
-    "lab",
-  ].includes(stage);
-  const visibleDifference = alternativeState
-    ? fieldDifference(alternativeState.body, rootState.body)
-    : 0;
-  const targetDifference = alternativeState
-    ? fieldDifference(alternativeState.target, rootState.target)
-    : 0;
-  const repairComplete = !["meet", "watching"].includes(stage);
-  const historyReached = compareMode;
-  const interventionReached = ["aha", "lab"].includes(stage);
-
-  const timelineCounts = (() => {
-    if (!alternativeBranchId) return null;
-    const comparison = lab.compare(alternativeBranchId, rootBranchId);
-    return {
-      common: comparison.commonTick,
-      left: comparison.leftEventsAfterFork,
-      right: comparison.rightEventsAfterFork,
-    };
-  })();
 
   return (
     <main className="repair-app">
+      <PaperIntro open={introOpen} onOpenChange={setIntroOpen} />
+
       <header className="app-header">
         <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true">
-            <span />
-          </span>
+          <span className="brand-mark" aria-hidden="true"><span /></span>
           <div>
             <strong>Repair Garden</strong>
-            <small>A temporal self experiment</small>
+            <small>A hidden-state perturbation experiment</small>
           </div>
         </div>
-        <nav className="concept-progress" aria-label="Experiment concepts">
-          <span className={repairComplete ? "is-done" : "is-current"}>
-            <i>1</i> Repair
-          </span>
-          <span
-            className={
-              historyReached
-                ? "is-done"
-                : repairComplete
-                  ? "is-current"
-                  : ""
-            }
-          >
-            <i>2</i> History
-          </span>
-          <span
-            className={
-              interventionReached
-                ? "is-done"
-                : historyReached
-                  ? "is-current"
-                  : ""
-            }
-          >
-            <i>3</i> Intervention
-          </span>
+
+        <nav className="concept-progress" aria-label="Experiment phases">
+          {["Match", "Repair", "Perturb", "Challenge"].map((label, index) => (
+            <span
+              key={label}
+              className={
+                index < progressIndex
+                  ? "is-done"
+                  : index === Math.min(progressIndex, 3)
+                    ? "is-current"
+                    : ""
+              }
+            >
+              <i>{index + 1}</i> {label}
+            </span>
+          ))}
         </nav>
-        <button className="reset-button" onClick={reset} type="button">
-          <RefreshCcw aria-hidden="true" /> Reset
-        </button>
+
+        <div className="header-actions">
+          <button type="button" onClick={() => setIntroOpen(true)}>
+            <Info aria-hidden="true" /> About the paper
+          </button>
+          <button type="button" onClick={reset}>
+            <RefreshCcw aria-hidden="true" /> Reset
+          </button>
+        </div>
       </header>
 
       <section className="experiment-shell">
         <div className="garden-stage">
-          <div className={`organism-grid ${compareMode ? "is-split" : ""}`}>
-            {compareMode ? (
-              <>
-                <OrganismCanvas
-                  state={alternativeState ?? rootState}
-                  label="Left · signalled history"
-                  caption={
-                    showTarget
-                      ? `Visible body + ${SHAPE_LABELS[
-                          (alternativeState ?? rootState).targetShape
-                        ]} target`
-                      : "Visible tissue"
-                  }
-                  showTarget={showTarget}
-                  signalKey={signalKey}
-                />
-                <OrganismCanvas
-                  state={rootState}
-                  label="Right · original history"
-                  caption={showTarget ? "Visible body + Mote target" : "Visible tissue"}
-                  showTarget={showTarget}
-                />
-              </>
-            ) : (
-              <OrganismCanvas
-                state={rootState}
-                label="Mote · live field"
-                caption="Visible tissue"
-                showTarget={false}
-                woundEnabled={stage === "meet"}
-                onWound={woundRoot}
-              />
-            )}
+          <div className="premise-strip" aria-label="Controlled variables">
+            <span><b>Same</b> visible body</span>
+            <span><b>Same</b> recorded protocol</span>
+            <span><b>Same</b> clock</span>
+            <span className={perturbed ? "is-manipulated" : ""}>
+              <b>{perturbed ? "Changed" : "Same"}</b> internal future-state
+            </span>
           </div>
 
-          {compareMode ? (
-            <div className="difference-readout" aria-live="polite">
-              <span>
-                <i className="swatch visible" aria-hidden="true" /> Visible
-                difference <strong>{percent(visibleDifference)}</strong>
-              </span>
-              <span>
-                <i className="swatch hidden" aria-hidden="true" /> Hidden
-                target-field difference <strong>{percent(targetDifference)}</strong>
-              </span>
-            </div>
-          ) : (
-            <p className="dish-instruction">
-              {stage === "meet"
-                ? "Drag across the glowing tissue to wound it"
-                : "Gold cells mark new growth"}
-            </p>
-          )}
+          <div className="organism-grid is-split">
+            <OrganismCanvas
+              state={leftState}
+              label="Left Mote"
+              roleLabel="Treatment branch"
+              showTarget={showTarget}
+              perturbed={perturbed}
+              pulseKey={pulseKey}
+            />
+            <OrganismCanvas
+              state={rightState}
+              label="Right Mote"
+              roleLabel="Untreated control"
+              showTarget={showTarget}
+              perturbed={false}
+            />
+          </div>
+
+          <div className="difference-readout" aria-live="polite">
+            <span>
+              <i className="swatch visible" aria-hidden="true" />
+              Whole-body difference <strong>{percent(visibleDifference)}</strong>
+            </span>
+            <span>
+              <i className="swatch lesion" aria-hidden="true" />
+              Difference inside lesion <strong>{percent(regionalDifference)}</strong>
+            </span>
+            <span>
+              <i className="swatch hidden" aria-hidden="true" />
+              Internal target difference <strong>{percent(targetDifference)}</strong>
+            </span>
+          </div>
+
+          <ExperimentControls
+            stage={stage}
+            running={running}
+            remaining={remaining}
+            showTarget={showTarget}
+            onWound={woundBoth}
+            onPerturb={perturbLeft}
+            onStep={stepPair}
+            onToggleRun={toggleRun}
+            onShowTarget={setShowTarget}
+          />
         </div>
 
         <ResearchGuide
           stage={stage}
-          rootState={rootState}
-          alternativeState={alternativeState}
+          leftState={leftState}
+          rightState={rightState}
           running={running}
+          remaining={remaining}
           showTarget={showTarget}
           visibleDifference={visibleDifference}
           targetDifference={targetDifference}
-          onPresetWound={() => woundRoot(PRESET_WOUND)}
-          onFork={forkMoment}
-          onSignal={signalLeft}
-          onWoundTwins={woundTwins}
-          onReveal={enterLab}
+          regionalDifference={regionalDifference}
         />
       </section>
 
-      {stage === "lab" && alternativeState ? (
-        <section className="lab-console" aria-label="Open experiment controls">
-          <div className="console-group target-group">
-            <p className="console-label">Rewrite left target field</p>
-            <div className="shape-buttons">
-              {(["mote", "bloom", "twin"] as GardenShape[]).map((shape) => (
-                <Button
-                  key={shape}
-                  variant={
-                    alternativeState.targetShape === shape ? "default" : "outline"
-                  }
-                  size="sm"
-                  onClick={() => changeTarget(shape)}
-                >
-                  {SHAPE_LABELS[shape]}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div className="console-group transport-group">
-            <p className="console-label">Run both branches</p>
-            <div className="transport-buttons">
-              <Button variant="outline" size="icon" onClick={toggleRun}>
-                {running ? (
-                  <Pause aria-label="Pause" />
-                ) : (
-                  <Play aria-label="Play" />
-                )}
-              </Button>
-              <Button variant="outline" size="icon" onClick={stepBoth}>
-                <StepForward aria-label="Advance one step" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={woundTwins}>
-                <Scissors aria-hidden="true" /> Wound both
-              </Button>
-            </div>
-          </div>
-
-          <div className="console-group speed-group">
-            <p className="console-label">Simulation speed · {speed.toFixed(1)}×</p>
-            <Slider
-              min={0.5}
-              max={2.5}
-              step={0.5}
-              value={[speed]}
-              onValueChange={(values) => setSpeed(values[0] ?? 1)}
-              aria-label="Simulation speed"
-            />
-          </div>
-
-          <div className="console-group target-switch">
-            <div>
-              <p className="console-label">Hidden target contour</p>
-              <small>Violet field, separate from tissue</small>
-            </div>
-            <Switch
-              checked={showTarget}
-              onCheckedChange={setShowTarget}
-              aria-label="Show hidden target contour"
-            />
-          </div>
-        </section>
-      ) : null}
-
-      {stage === "lab" && timelineCounts ? (
-        <section className="timeline-panel">
-          <div className="timeline-heading">
-            <div>
-              <p className="eyebrow">Event-sourced history</p>
-              <h2>One recorded past, two testable futures</h2>
-            </div>
-            <p>
-              Every wound, step, and target rewrite is replayable. A branch is
-              a causal experiment, not an alternate animation.
-            </p>
-          </div>
-          <div className="timeline-graph" aria-label="Experiment branch timeline">
-            <div className="timeline-node shared">
-              <span>Shared past</span>
-              <strong>{timelineCounts.common} events</strong>
-            </div>
-            <ArrowRight className="fork-line" aria-hidden="true" />
-            <div className="timeline-branches">
-              <span>
-                Signalled history <strong>+{timelineCounts.left}</strong>
-              </span>
-              <span>
-                Original history <strong>+{timelineCounts.right}</strong>
-              </span>
-            </div>
-          </div>
-        </section>
-      ) : null}
+      <section className="causal-summary" aria-label="Causal experiment design">
+        <div>
+          <p className="eyebrow">Causal design</p>
+          <h2>One manipulated variable. Everything else held together.</h2>
+        </div>
+        <div className="causal-cards">
+          <article>
+            <span>Controlled</span>
+            <strong>Visible anatomy</strong>
+            <p>Both Motes begin and are wounded in the same observable state.</p>
+          </article>
+          <article>
+            <span>Controlled</span>
+            <strong>History + schedule</strong>
+            <p>Both receive the same lesions and synchronized cellular updates.</p>
+          </article>
+          <article className="manipulation-card">
+            <span>Manipulated</span>
+            <strong>left.next_target_shape</strong>
+            <p>The experimenter changes this locked internal variable only.</p>
+          </article>
+          <article>
+            <span>Measured</span>
+            <strong>Repair inside the lesion</strong>
+            <p>Tissue outside the damaged region cannot drift toward the target.</p>
+          </article>
+        </div>
+      </section>
 
       <footer className="model-footer">
         <div>
-          <p className="eyebrow">Model assumptions</p>
-          <h2>A transparent toy, deliberately</h2>
+          <p className="eyebrow">Model boundary</p>
+          <h2>A transparent causal toy, deliberately</h2>
         </div>
         <div className="assumption-grid">
           <p>
             <strong>What is fixed</strong>
-            A 64 × 48 field, a local 3 × 3 neighborhood, a synchronous update
-            rule, and three available target geometries.
+            Two synchronized 64 × 48 cellular fields, one local 3 × 3 rule,
+            identical lesion geometry, and the same update clock.
           </p>
           <p>
-            <strong>What can change</strong>
-            Visible tissue, wounds, branch histories, and one explicit target
-            field tagged as a policy-layer intervention. No learning rule is
-            implemented.
+            <strong>What is manipulated</strong>
+            Only the left branch&apos;s locked next_target_shape changes from mote
+            to bloom. The right branch remains the untreated control.
           </p>
           <p>
             <strong>What this demonstrates</strong>
-            Identical visible presents need not imply identical futures when
-            hidden control state differs. It does not prove cells store shapes.
+            Repair can reveal causally active hidden organization. It does not
+            prove that real cells store shape pictures or that Mote learns.
           </p>
         </div>
         <div className="kernel-note">
-          <span>Built on Temporal Self Lab · core 0.1</span>
-          <span>Deterministic · forkable · replay-verifiable</span>
+          <span>Deterministic · lesion-local · replay-verifiable</span>
+          <span>No learning rule is implemented</span>
         </div>
       </footer>
     </main>

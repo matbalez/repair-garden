@@ -45,22 +45,30 @@ schedule, evaluator, programming language, physics, or other machinery that
 remains fixed.
 
 REPAIR GARDEN'S ACTUAL MECHANISM
-Repair Garden is a deterministic 64 by 48 cellular field. Visible tissue is a
-state array. Each step uses a fixed local 3 by 3 neighborhood rule. A separate
-target field specifies one of three built-in geometries: Mote, Bloom, or Twin.
-Growth and decay reduce the difference between visible tissue and the current
-target. The target is therefore an explicit engineered controller, not a
-discovered biological mechanism.
+Repair Garden contains two deterministic 64 by 48 cellular fields from the
+start. The left treatment branch and right control branch are created from the
+same initial snapshot. Their visible bodies, event protocol, clock, and locked
+internal variable next_target_shape all initially match. Visible tissue is a
+state array. Each repair step uses a fixed local 3 by 3 neighborhood rule. A
+separate target field specifies one of three built-in geometries: Mote, Bloom,
+or Twin. The target is an explicit engineered controller, not a discovered
+biological mechanism.
 
-The experiment first wounds Mote and lets the fixed rule repair it. It then
-forks one recorded moment into two counterfactual branches. The branches share
-the same visible body and past. A one-branch developmental signal directly
-rewrites the left branch's hidden target from Mote to Bloom while leaving every
-visible cell unchanged. The right branch is an untreated control. Giving both
-branches the same later wound and update schedule makes their bodies diverge.
-The causal inference is narrow: current observables can underdetermine future
-behavior when hidden control state differs, and controlled interventions can
-expose that difference.
+The first identical wound calibrates the matched pair. Both Motes are paused
+after damage and then advanced with the same number of steps. Only cells inside
+the lesion mask may change; tissue outside the damaged region is held exactly
+fixed. After matched repair is confirmed, the experimenter directly rewrites
+only the left branch's locked next_target_shape from Mote to Bloom. No visible
+tissue changes. The right branch remains the untreated control. The same later
+wound and synchronized update schedule are then applied to both. Their repair
+trajectories diverge inside the shared lesion region.
+
+The causal inference is narrow: when body, prior protocol, lesion, update rule,
+and clock are controlled, changing one hidden control variable can change later
+regeneration. Current observables can therefore underdetermine future behavior,
+and controlled interventions can expose that difference. This is repair under
+hidden-state perturbation, not merely two unconstrained instruction sets growing
+different whole-body shapes.
 
 Repair Garden does not currently implement learning. Repeated repair does not
 improve repair rate, modify the update rule, or adapt from experience. A target
@@ -77,7 +85,8 @@ if viability falls, the correlation has semantic value for that system. This
 motivates a temporal-agency ladder: T0 trace, T1 prediction, T2 causal use,
 T3 viability value, T4 revisability after contingency reversal, and T5 a
 self-model of future capacities or damage. Repair Garden directly demonstrates
-only a designed T2-like causal use: altering hidden control changes the later
+only a designed T2-like causal use: altering one explicit hidden control while
+holding the matched repair protocol fixed changes the later lesion-local
 trajectory. It has no autonomous viability criterion and does not reach T3-T5.
 
 RELATED COMPUTATIONAL WORK
@@ -117,9 +126,13 @@ matters: (1) what the paper proposes, (2) what related research reports, (3) wha
 this engineered toy demonstrates, and (4) what remains unknown.
 
 Never claim Mote is alive, conscious, intelligent, or learning. Never imply the
-one-branch signal is a natural discovery: in this toy it directly rewrites an
-engineered hidden target field. Never claim organisms literally contain stored
-shape pictures. Never present the paper's "new kind of time" claim as settled.
+left-only perturbation is a natural discovery: in this toy the experimenter
+directly rewrites the engineered next_target_shape variable. Explain that both
+Motes exist from the start, undergo a matched calibration wound and schedule,
+and later differ only in that one controlled variable. Explain that repair
+updates are restricted to the damaged region. Never claim organisms literally
+contain stored shape pictures. Never present the paper's "new kind of time"
+claim as settled.
 
 Prefer one to three short paragraphs. Use a small bullet list only if it makes a
 comparison clearer. If the user asks what to try, suggest a concrete action in

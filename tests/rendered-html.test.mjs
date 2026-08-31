@@ -28,8 +28,10 @@ test("renders the Repair Garden experiment shell", async () => {
   );
   const html = await response.text();
   assert.match(html, /<title>Repair Garden<\/title>/i);
-  assert.match(html, /Meet Mote\./i);
-  assert.match(html, /temporal self experiment/i);
+  assert.match(html, /Two Motes\. One history\./i);
+  assert.match(html, /hidden-state perturbation experiment/i);
+  assert.match(html, /next_target_shape/i);
+  assert.match(html, /Wound both identically/i);
   assert.match(html, /Garden Guide/i);
   assert.match(html, /Paper-grounded science companion/i);
 });

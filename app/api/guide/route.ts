@@ -1,14 +1,14 @@
 import { RESEARCH_GUIDE_INSTRUCTIONS } from "@/lib/research-guide";
 
 const STAGES = new Set([
-  "meet",
-  "watching",
-  "repaired",
-  "twins",
-  "cut-twins",
-  "diverging",
-  "aha",
-  "lab",
+  "baseline",
+  "first-wounded",
+  "first-repairing",
+  "matched",
+  "perturbed",
+  "second-wounded",
+  "comparing",
+  "result",
 ]);
 
 type GuideMessage = {
@@ -19,11 +19,15 @@ type GuideMessage = {
 type GuideContext = {
   stage?: string;
   visibleDifference?: number;
+  regionalDifference?: number;
   targetDifference?: number;
   leftTarget?: string;
   rightTarget?: string;
   targetsRevealed?: boolean;
   running?: boolean;
+  stepsRemaining?: number;
+  repairScope?: string;
+  protocolMatched?: boolean;
 };
 
 function finiteNumber(value: unknown) {
@@ -57,6 +61,9 @@ function contextSummary(value: unknown) {
     `Visible branch difference: ${Math.round(
       finiteNumber(context.visibleDifference) * 100,
     )}%`,
+    `Regeneration difference inside the shared lesion: ${Math.round(
+      finiteNumber(context.regionalDifference) * 100,
+    )}%`,
     `Hidden target difference: ${Math.round(
       finiteNumber(context.targetDifference) * 100,
     )}%`,
@@ -64,6 +71,11 @@ function contextSummary(value: unknown) {
     `Right target: ${String(context.rightTarget ?? "not yet available").slice(0, 30)}`,
     `Target overlay revealed: ${Boolean(context.targetsRevealed)}`,
     `Simulation running: ${Boolean(context.running)}`,
+    `Synchronized steps remaining: ${Math.round(
+      finiteNumber(context.stepsRemaining),
+    )}`,
+    `Repair update scope: ${String(context.repairScope ?? "unknown").slice(0, 60)}`,
+    `Protocol matched across branches: ${Boolean(context.protocolMatched)}`,
   ].join("\n");
 }
 

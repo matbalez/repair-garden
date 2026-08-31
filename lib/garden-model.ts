@@ -20,7 +20,10 @@ export interface GardenState {
   body: Float32Array;
   target: Float32Array;
   newness: Float32Array;
+  woundMask: Float32Array;
+  repairMask: Float32Array;
   targetShape: GardenShape;
+  targetLocked: boolean;
   iteration: number;
 }
 
@@ -95,17 +98,18 @@ export function gardenMetrics(state: GardenState): {
   mass: number;
 } {
   let difference = 0;
-  let targetMass = 0;
+  let activeRepairArea = 0;
   let bodyMass = 0;
   for (let index = 0; index < state.body.length; index += 1) {
     const body = state.body[index] ?? 0;
     const target = state.target[index] ?? 0;
-    difference += Math.abs(body - target);
-    targetMass += target;
+    const repair = state.repairMask[index] ?? 0;
+    difference += Math.abs(body - target) * repair;
+    activeRepairArea += repair;
     bodyMass += body;
   }
   return {
-    error: difference / Math.max(targetMass, 1),
+    error: difference / Math.max(activeRepairArea, 1),
     mass: bodyMass / state.body.length,
   };
 }
@@ -119,6 +123,22 @@ export function fieldDifference(
     difference += Math.abs((left[index] ?? 0) - (right[index] ?? 0));
   }
   return difference / Math.max(left.length, 1);
+}
+
+export function maskedFieldDifference(
+  left: Float32Array,
+  right: Float32Array,
+  leftMask: Float32Array,
+  rightMask: Float32Array,
+): number {
+  let difference = 0;
+  let area = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    const mask = Math.max(leftMask[index] ?? 0, rightMask[index] ?? 0);
+    difference += Math.abs((left[index] ?? 0) - (right[index] ?? 0)) * mask;
+    area += mask;
+  }
+  return difference / Math.max(area, 1);
 }
 
 function outputFor(state: GardenState, verb: string): GardenOutput {
@@ -136,11 +156,21 @@ function nextGardenState(state: Readonly<GardenState>, alpha: number): GardenSta
   const { width, height } = state;
   const body = new Float32Array(state.body.length);
   const newness = new Float32Array(state.newness.length);
+  const repairMask = new Float32Array(state.repairMask.length);
   const kernel = [1, 2, 1, 2, 4, 2, 1, 2, 1] as const;
 
   for (let row = 0; row < height; row += 1) {
     for (let column = 0; column < width; column += 1) {
       const index = row * width + column;
+      const existing = state.body[index] ?? 0;
+      const repair = state.repairMask[index] ?? 0;
+      if (repair < 0.001) {
+        body[index] = existing;
+        newness[index] = (state.newness[index] ?? 0) * 0.82;
+        repairMask[index] = 0;
+        continue;
+      }
+
       let neighborhood = 0;
       let kernelIndex = 0;
       for (let rowOffset = -1; rowOffset <= 1; rowOffset += 1) {
@@ -166,16 +196,17 @@ function nextGardenState(state: Readonly<GardenState>, alpha: number): GardenSta
       }
 
       neighborhood /= 16;
-      const existing = state.body[index] ?? 0;
       const target = state.target[index] ?? 0;
       const frontier = smoothstep(0.025, 0.34, neighborhood);
-      const supported = Math.max(existing * 0.97, frontier);
-      const desired = target * supported;
-      const rate = target > 0.02 ? alpha : alpha * 1.75;
-      const next = clamp(existing + (desired - existing) * rate);
+      const rate =
+        target > existing
+          ? alpha * (0.25 + frontier * 0.75)
+          : alpha * 1.75;
+      const next = clamp(existing + (target - existing) * rate);
       const growth = Math.max(0, next - existing);
       body[index] = next;
       newness[index] = clamp((state.newness[index] ?? 0) * 0.82 + growth * 4.8);
+      repairMask[index] = Math.abs(next - target) < 0.035 ? 0 : repair;
     }
   }
 
@@ -183,6 +214,7 @@ function nextGardenState(state: Readonly<GardenState>, alpha: number): GardenSta
     ...state,
     body,
     newness,
+    repairMask,
     iteration: state.iteration + 1,
   };
 }
@@ -202,7 +234,10 @@ export const gardenModel: TemporalModel<
       body: new Float32Array(target),
       target,
       newness: new Float32Array(target.length),
+      woundMask: new Float32Array(target.length),
+      repairMask: new Float32Array(target.length),
       targetShape: "mote",
+      targetLocked: true,
       iteration: 0,
     };
   },
@@ -225,6 +260,8 @@ export const gardenModel: TemporalModel<
       const wound = payload as WoundPayload;
       const body = new Float32Array(state.body);
       const newness = new Float32Array(state.newness);
+      const woundMask = new Float32Array(state.body.length);
+      const repairMask = new Float32Array(state.body.length);
       for (let row = 0; row < state.height; row += 1) {
         for (let column = 0; column < state.width; column += 1) {
           const index = row * state.width + column;
@@ -232,13 +269,15 @@ export const gardenModel: TemporalModel<
             (point) =>
               Math.hypot(column - point.x, row - point.y) <= wound.radius,
           );
-          if (struck) {
+          if (struck && (state.body[index] ?? 0) > 0.025) {
             body[index] = 0;
             newness[index] = 0;
+            woundMask[index] = 1;
+            repairMask[index] = 1;
           }
         }
       }
-      const next = { ...state, body, newness };
+      const next = { ...state, body, newness, woundMask, repairMask };
       return {
         state: next,
         output: outputFor(next, "A wound removed visible tissue"),

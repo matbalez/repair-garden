@@ -128,7 +128,7 @@ function outputFor(state: GardenState, verb: string): GardenOutput {
     targetShape: state.targetShape,
     summary: `${verb}. Visible tissue occupies ${Math.round(
       metrics.mass * 100,
-    )}% of the dish; repair error is ${Math.round(metrics.error * 100)}%.`,
+    )}% of the dish; target mismatch is ${Math.round(metrics.error * 100)}%.`,
   };
 }
 
@@ -264,7 +264,7 @@ export const gardenModel: TemporalModel<
         changes: [
           {
             layer: "policy",
-            summary: `The remembered future changed to ${shape}`,
+            summary: `The engineered target field changed to ${shape}`,
             path: "target",
             before: state.targetShape,
             after: shape,
@@ -289,7 +289,7 @@ export function createGardenLab(seed = 481516): GardenLab {
         "Changing a separable target field while holding visible anatomy fixed will redirect later repair.",
       observables: [
         "visible tissue",
-        "repair error",
+        "target mismatch",
         "target-field difference",
         "branch divergence",
       ],

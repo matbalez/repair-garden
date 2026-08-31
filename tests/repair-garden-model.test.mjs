@@ -51,23 +51,23 @@ test("a visible wound reduces over deterministic repair steps", () => {
 test("counterfactual twins can share a visible body and diverge later", () => {
   const lab = createGardenLab(29);
   const original = lab.rootBranchId;
-  const pulseHistory = lab.fork(original, { label: "Pulse history" });
+  const signalledHistory = lab.fork(original, { label: "Signalled history" });
 
-  lab.intervene(pulseHistory, "rewrite-target", { shape: "bloom" });
-  const beforeLeft = lab.branch(pulseHistory).headState;
+  lab.intervene(signalledHistory, "rewrite-target", { shape: "bloom" });
+  const beforeLeft = lab.branch(signalledHistory).headState;
   const beforeRight = lab.branch(original).headState;
   assert.equal(fieldDifference(beforeLeft.body, beforeRight.body), 0);
   assert.ok(fieldDifference(beforeLeft.target, beforeRight.target) > 0.05);
 
-  lab.intervene(pulseHistory, "wound", wound);
+  lab.intervene(signalledHistory, "wound", wound);
   lab.intervene(original, "wound", wound);
   for (let step = 0; step < 48; step += 1) {
-    lab.step(pulseHistory, { alpha: 0.25 });
+    lab.step(signalledHistory, { alpha: 0.25 });
     lab.step(original, { alpha: 0.25 });
   }
 
-  const afterLeft = lab.branch(pulseHistory).headState;
+  const afterLeft = lab.branch(signalledHistory).headState;
   const afterRight = lab.branch(original).headState;
   assert.ok(fieldDifference(afterLeft.body, afterRight.body) > 0.03);
-  assert.equal(lab.compare(pulseHistory, original).commonTick, 0);
+  assert.equal(lab.compare(signalledHistory, original).commonTick, 0);
 });

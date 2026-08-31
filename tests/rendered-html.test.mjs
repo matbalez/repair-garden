@@ -30,4 +30,6 @@ test("renders the Repair Garden experiment shell", async () => {
   assert.match(html, /<title>Repair Garden<\/title>/i);
   assert.match(html, /Meet Mote\./i);
   assert.match(html, /temporal self experiment/i);
+  assert.match(html, /Garden Guide/i);
+  assert.match(html, /Paper-grounded science companion/i);
 });

@@ -22,10 +22,11 @@ test("the guide corpus distinguishes target rewriting from learning", async () =
     "/lib/research-guide.ts",
   );
 
-  assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /does not currently implement learning/i);
+  assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /implements no learning rule/i);
   assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /directly rewrites/i);
-  assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /does not\s+prove the stronger ontology/i);
+  assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /stronger ontological claim remains unproven/i);
   assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /distributed\s+attractor/i);
+  assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /avoid canned contrast formulas/i);
 });
 
 test("the guide endpoint fails clearly when no model connection exists", async () => {

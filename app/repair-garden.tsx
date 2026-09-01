@@ -10,7 +10,6 @@ import {
   Info,
   LoaderCircle,
   LockKeyhole,
-  MessageCircle,
   Pause,
   Play,
   Radio,
@@ -38,13 +37,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   type GardenLab,
   type GardenShape,
   type GardenState,
   createGardenLab,
+  createRandomWound,
   fieldDifference,
   gardenMetrics,
   maskedFieldDifference,
@@ -67,15 +74,6 @@ interface GuideChatMessage {
 }
 
 const REPAIR_STEPS = 48;
-const PRESET_WOUND = {
-  points: [
-    { x: 39, y: 13 },
-    { x: 39, y: 16 },
-    { x: 40, y: 19 },
-    { x: 40, y: 22 },
-  ],
-  radius: 4.4,
-};
 
 const SHAPE_LABELS: Record<GardenShape, string> = {
   mote: "mote",
@@ -151,9 +149,9 @@ function PaperIntro({
         <div className="modal-boundary">
           <Info aria-hidden="true" />
           <p>
-            <strong>A model, not a biological claim.</strong> The internal target
-            in this toy is engineered and explicit. The experiment does not show
-            that real cells store a picture of the body or that Mote learns.
+            <strong>Scope of the model.</strong> The internal target in this toy
+            is engineered and explicit. Real cells may organize repair in very
+            different ways. Mote has no learning rule.
           </p>
         </div>
 
@@ -306,6 +304,15 @@ function OrganismCanvas({
       context.stroke();
     }
 
+    const phase = state.iteration * 0.075;
+    const driftX = Math.sin(phase) * Math.min(cellWidth * 0.85, 3.2);
+    const driftY = Math.cos(phase * 0.77) * Math.min(cellHeight * 0.65, 2.4);
+    const breath = 1 + Math.sin(phase * 0.48) * 0.006;
+    context.save();
+    context.translate(width / 2 + driftX, height / 2 + driftY);
+    context.scale(breath, breath);
+    context.translate(-width / 2, -height / 2);
+
     if (showTarget) {
       for (let row = 0; row < state.height; row += 1) {
         for (let column = 0; column < state.width; column += 1) {
@@ -359,6 +366,7 @@ function OrganismCanvas({
         );
       }
     }
+    context.restore();
   }, [showTarget, state]);
 
   const metrics = gardenMetrics(state);
@@ -399,11 +407,13 @@ function StageNarration({
   running,
   remaining,
   regionalDifference,
+  leftTarget,
 }: {
   stage: Stage;
   running: boolean;
   remaining: number;
   regionalDifference: number;
+  leftTarget: GardenShape;
 }) {
   const copy: Record<
     Stage,
@@ -413,7 +423,7 @@ function StageNarration({
       eyebrow: "01 · Matched starting state",
       title: "Two Motes. One history.",
       body: "Both branches begin with the same visible tissue, the same clock, and the same locked internal future-state. The left is reserved for treatment; the right remains the control.",
-      note: "Nothing differs yet—not the body, target, wound, or schedule.",
+      note: "Body, target, wound state, and schedule all match.",
     },
     "first-wounded": {
       eyebrow: "02 · Calibration wound",
@@ -433,12 +443,12 @@ function StageNarration({
       eyebrow: "03 · Matched history confirmed",
       title: "The control works.",
       body: "After the same wound and the same repair schedule, the two visible bodies still match. Now change exactly one internal variable on the left.",
-      note: "This first repair is calibration, not evidence of learning.",
+      note: "The first repair calibrates the matched pair. Mote has no learning rule.",
     },
     perturbed: {
       eyebrow: "04 · Selective perturbation",
       title: "One hidden state changed.",
-      body: "The left next_target_shape is now bloom. The right remains mote. No visible tissue changed, and both histories remain synchronized up to this intervention.",
+      body: `The left next_target_shape is now ${SHAPE_LABELS[leftTarget]}. The right remains mote. Visible tissue is unchanged, and both histories remain synchronized up to this intervention.`,
       note: "Manipulated variable: left.next_target_shape only.",
     },
     "second-wounded": {
@@ -449,7 +459,7 @@ function StageNarration({
     },
     comparing: {
       eyebrow: "05 · Causal comparison",
-      title: "Watch the lesion—not the whole body.",
+      title: "Watch the shared lesion.",
       body: "Both sides receive the same update schedule. Because only damaged cells may change, any emerging difference stays localized to the shared wound region.",
       note: running
         ? `${remaining} synchronized steps remain.`
@@ -459,7 +469,7 @@ function StageNarration({
       eyebrow: "The causal result",
       title: "Same wound. Different repair.",
       body: `The regeneration paths differ by ${percent(regionalDifference)} inside the same lesion region. The targeted hidden-state perturbation is causally active in this engineered toy.`,
-      note: "This demonstrates repair under hidden-state perturbation—not learning and not a literal cellular picture of anatomy.",
+      note: "The lesion reveals the effect of the hidden-state perturbation. Mote has no learning rule, and real cells may organize repair differently.",
     },
   };
   const current = copy[stage];
@@ -509,6 +519,17 @@ function ResearchGuide({
   const [messages, setMessages] = useState<GuideChatMessage[]>([]);
   const [question, setQuestion] = useState("");
   const [isAsking, setIsAsking] = useState(false);
+  const guideScrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (messages.length === 0 && !isAsking) return;
+    const frame = window.requestAnimationFrame(() => {
+      const panel = guideScrollRef.current;
+      if (!panel) return;
+      panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isAsking, messages]);
 
   const quickQuestions: Record<Stage, string[]> = {
     baseline: ["What does same history mean here?", "Why show the hidden state?"],
@@ -587,12 +608,13 @@ function ResearchGuide({
         <span className="guide-status">Live context</span>
       </header>
 
-      <div className="guide-scroll" aria-live="polite">
+      <div ref={guideScrollRef} className="guide-scroll" aria-live="polite">
         <StageNarration
           stage={stage}
           running={running}
           remaining={remaining}
           regionalDifference={regionalDifference}
+          leftTarget={leftState.targetShape}
         />
 
         {messages.length > 0 ? (
@@ -629,22 +651,33 @@ function ResearchGuide({
       </div>
 
       <form className="guide-input" onSubmit={askGuide}>
-        <MessageCircle aria-hidden="true" />
-        <Input
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask what is going on here…"
-          aria-label="Ask the Garden Guide"
-          maxLength={2_000}
-        />
-        <Button
-          type="submit"
-          size="icon"
-          disabled={!question.trim() || isAsking}
-          aria-label="Send question"
-        >
-          <Send />
-        </Button>
+        <label htmlFor="garden-guide-question">
+          Ask the Garden Guide <span>Enter sends · Shift+Enter adds a line</span>
+        </label>
+        <div className="guide-composer">
+          <Textarea
+            id="garden-guide-question"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+            placeholder="Type a question about this moment…"
+            aria-label="Ask the Garden Guide"
+            maxLength={2_000}
+            rows={2}
+          />
+          <Button
+            type="submit"
+            disabled={!question.trim() || isAsking}
+            aria-label="Send question"
+          >
+            <Send /> Ask
+          </Button>
+        </div>
       </form>
 
       <div className="guide-sources">
@@ -676,11 +709,12 @@ function ExperimentControls({
   remaining: number;
   showTarget: boolean;
   onWound: () => void;
-  onPerturb: () => void;
+  onPerturb: (shape: GardenShape) => void;
   onStep: (count: number) => void;
   onToggleRun: () => void;
   onShowTarget: (show: boolean) => void;
 }) {
+  const [selectedTarget, setSelectedTarget] = useState<GardenShape>("bloom");
   const repairStage = [
     "first-wounded",
     "first-repairing",
@@ -710,17 +744,34 @@ function ExperimentControls({
       <div className="control-actions">
         {stage === "baseline" ? (
           <Button onClick={onWound}>
-            <Scissors aria-hidden="true" /> Wound both identically
+            <Scissors aria-hidden="true" /> Wound both at a random site
           </Button>
         ) : null}
         {stage === "matched" ? (
-          <Button className="perturb-button" onClick={onPerturb}>
-            <Radio aria-hidden="true" /> Perturb left hidden state
-          </Button>
+          <div className="target-perturbation-picker">
+            <Select
+              value={selectedTarget}
+              onValueChange={(value) => setSelectedTarget(value as GardenShape)}
+            >
+              <SelectTrigger aria-label="Select the left mote's next target shape">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="target-shape-menu">
+                <SelectItem value="bloom">Bloom</SelectItem>
+                <SelectItem value="twin">Twin</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              className="perturb-button"
+              onClick={() => onPerturb(selectedTarget)}
+            >
+              <Radio aria-hidden="true" /> Set left target
+            </Button>
+          </div>
         ) : null}
         {stage === "perturbed" ? (
           <Button onClick={onWound}>
-            <Scissors aria-hidden="true" /> Apply the same later wound
+            <Scissors aria-hidden="true" /> New shared random wound
           </Button>
         ) : null}
         {repairStage ? (
@@ -771,7 +822,7 @@ export function RepairGarden() {
   const [rightState, setRightState] = useState(() => getBranchState(lab, rightBranchId));
   const [remaining, setRemaining] = useState(0);
   const [running, setRunning] = useState(false);
-  const [showTarget, setShowTarget] = useState(false);
+  const [showTarget, setShowTarget] = useState(true);
   const [pulseKey, setPulseKey] = useState(0);
 
   const syncViews = useCallback(() => {
@@ -856,17 +907,20 @@ export function RepairGarden() {
 
   const woundBoth = useCallback(() => {
     if (stage !== "baseline" && stage !== "perturbed") return;
-    lab.intervene(leftBranchId, "wound", PRESET_WOUND);
-    lab.intervene(rightBranchId, "wound", PRESET_WOUND);
+    const wound = createRandomWound(leftState, rightState, {
+      preferTargetDifference: stage === "perturbed",
+    });
+    lab.intervene(leftBranchId, "wound", wound);
+    lab.intervene(rightBranchId, "wound", wound);
     syncViews();
     setRemaining(REPAIR_STEPS);
     setRunning(false);
     setStage(stage === "baseline" ? "first-wounded" : "second-wounded");
-  }, [lab, leftBranchId, rightBranchId, stage, syncViews]);
+  }, [lab, leftBranchId, leftState, rightBranchId, rightState, stage, syncViews]);
 
-  const perturbLeft = useCallback(() => {
+  const perturbLeft = useCallback((shape: GardenShape) => {
     if (stage !== "matched") return;
-    lab.intervene(leftBranchId, "rewrite-target", { shape: "bloom" });
+    lab.intervene(leftBranchId, "rewrite-target", { shape });
     syncViews();
     setPulseKey((current) => current + 1);
     setStage("perturbed");
@@ -953,15 +1007,6 @@ export function RepairGarden() {
 
       <section className="experiment-shell">
         <div className="garden-stage">
-          <div className="premise-strip" aria-label="Controlled variables">
-            <span><b>Same</b> visible body</span>
-            <span><b>Same</b> recorded protocol</span>
-            <span><b>Same</b> clock</span>
-            <span className={perturbed ? "is-manipulated" : ""}>
-              <b>{perturbed ? "Changed" : "Same"}</b> internal future-state
-            </span>
-          </div>
-
           <div className="organism-grid is-split">
             <OrganismCanvas
               state={leftState}
@@ -1024,7 +1069,7 @@ export function RepairGarden() {
       <section className="causal-summary" aria-label="Causal experiment design">
         <div>
           <p className="eyebrow">Causal design</p>
-          <h2>One manipulated variable. Everything else held together.</h2>
+          <h2>Change one hidden variable, then compare repair.</h2>
         </div>
         <div className="causal-cards">
           <article>
@@ -1053,7 +1098,7 @@ export function RepairGarden() {
       <footer className="model-footer">
         <div>
           <p className="eyebrow">Model boundary</p>
-          <h2>A transparent causal toy, deliberately</h2>
+          <h2>A transparent causal model</h2>
         </div>
         <div className="assumption-grid">
           <p>
@@ -1063,13 +1108,13 @@ export function RepairGarden() {
           </p>
           <p>
             <strong>What is manipulated</strong>
-            Only the left branch&apos;s locked next_target_shape changes from mote
-            to bloom. The right branch remains the untreated control.
+            The left branch&apos;s locked next_target_shape can change from mote to
+            Bloom or Twin. The right branch remains the untreated control.
           </p>
           <p>
-            <strong>What this demonstrates</strong>
-            Repair can reveal causally active hidden organization. It does not
-            prove that real cells store shape pictures or that Mote learns.
+            <strong>What the result supports</strong>
+            A lesion can reveal the causal effect of hidden organization. Real
+            cells may use different mechanisms, and Mote has no learning rule.
           </p>
         </div>
         <div className="kernel-note">

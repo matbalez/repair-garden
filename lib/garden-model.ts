@@ -47,6 +47,11 @@ export interface RewriteTargetPayload {
   shape: GardenShape;
 }
 
+export interface RandomWoundOptions {
+  preferTargetDifference?: boolean;
+  random?: () => number;
+}
+
 const clamp = (value: number, minimum = 0, maximum = 1) =>
   Math.min(maximum, Math.max(minimum, value));
 
@@ -139,6 +144,56 @@ export function maskedFieldDifference(
     area += mask;
   }
   return difference / Math.max(area, 1);
+}
+
+export function createRandomWound(
+  left: GardenState,
+  right: GardenState,
+  options: RandomWoundOptions = {},
+): WoundPayload {
+  const random = options.random ?? Math.random;
+  const margin = 7;
+  const visibleCandidates: GardenPoint[] = [];
+  const revealingCandidates: GardenPoint[] = [];
+
+  for (let row = margin; row < left.height - margin; row += 1) {
+    for (let column = margin; column < left.width - margin; column += 1) {
+      const index = row * left.width + column;
+      const sharedTissue = Math.min(
+        left.body[index] ?? 0,
+        right.body[index] ?? 0,
+      );
+      if (sharedTissue < 0.42) continue;
+
+      const point = { x: column, y: row };
+      visibleCandidates.push(point);
+      if (
+        Math.abs((left.target[index] ?? 0) - (right.target[index] ?? 0)) >
+        0.24
+      ) {
+        revealingCandidates.push(point);
+      }
+    }
+  }
+
+  const candidates =
+    options.preferTargetDifference && revealingCandidates.length > 0
+      ? revealingCandidates
+      : visibleCandidates;
+  const fallback = { x: Math.round(left.width / 2), y: Math.round(left.height / 2) };
+  const unit = clamp(random(), 0, 0.999999);
+  const center = candidates[Math.floor(unit * candidates.length)] ?? fallback;
+  const angle = clamp(random(), 0, 0.999999) * Math.PI;
+  const points = [-4.5, -1.5, 1.5, 4.5].map((offset) => ({
+    x: Math.round(
+      clamp(center.x + Math.cos(angle) * offset, margin, left.width - margin - 1),
+    ),
+    y: Math.round(
+      clamp(center.y + Math.sin(angle) * offset, margin, left.height - margin - 1),
+    ),
+  }));
+
+  return { points, radius: 4.2 };
 }
 
 function outputFor(state: GardenState, verb: string): GardenOutput {

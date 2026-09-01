@@ -19,10 +19,16 @@ after(async () => {
 
 const {
   createGardenLab,
+  createRandomWound,
   fieldDifference,
   gardenMetrics,
   maskedFieldDifference,
 } = await vite.ssrLoadModule("/lib/garden-model.ts");
+
+function sequenceRandom(...values) {
+  let index = 0;
+  return () => values[index++] ?? values.at(-1) ?? 0;
+}
 
 const wound = {
   points: [
@@ -68,6 +74,31 @@ test("repair changes only cells in the damaged region", () => {
   }
 });
 
+test("each random wound can move while remaining identical across branches", () => {
+  const lab = createGardenLab(26);
+  const right = lab.rootBranchId;
+  const left = lab.fork(right, { label: "Left treatment" });
+  const leftState = lab.branch(left).headState;
+  const rightState = lab.branch(right).headState;
+  const first = createRandomWound(leftState, rightState, {
+    random: sequenceRandom(0.08, 0.2),
+  });
+  const second = createRandomWound(leftState, rightState, {
+    random: sequenceRandom(0.86, 0.72),
+  });
+
+  assert.notDeepEqual(first.points, second.points);
+  lab.intervene(left, "wound", first);
+  lab.intervene(right, "wound", first);
+  assert.equal(
+    fieldDifference(
+      lab.branch(left).headState.body,
+      lab.branch(right).headState.body,
+    ),
+    0,
+  );
+});
+
 test("matched motes diverge only after a selective hidden-state perturbation", () => {
   const lab = createGardenLab(29);
   const right = lab.rootBranchId;
@@ -95,8 +126,12 @@ test("matched motes diverge only after a selective hidden-state perturbation", (
   assert.equal(beforeLeft.targetLocked, true);
   assert.equal(beforeRight.targetLocked, true);
 
-  lab.intervene(left, "wound", wound);
-  lab.intervene(right, "wound", wound);
+  const revealingWound = createRandomWound(beforeLeft, beforeRight, {
+    preferTargetDifference: true,
+    random: sequenceRandom(0.42, 0.63),
+  });
+  lab.intervene(left, "wound", revealingWound);
+  lab.intervene(right, "wound", revealingWound);
   const woundedLeft = lab.branch(left).headState;
   const woundedRight = lab.branch(right).headState;
   assert.equal(fieldDifference(woundedLeft.body, woundedRight.body), 0);
@@ -126,5 +161,39 @@ test("matched motes diverge only after a selective hidden-state perturbation", (
       assert.equal(afterLeft.body[index], beforeLeft.body[index]);
       assert.equal(afterRight.body[index], beforeRight.body[index]);
     }
+  }
+});
+
+test("both selectable targets produce lesion-local divergence", () => {
+  for (const shape of ["bloom", "twin"]) {
+    const lab = createGardenLab(91);
+    const right = lab.rootBranchId;
+    const left = lab.fork(right, { label: "Left treatment" });
+    lab.intervene(left, "rewrite-target", { shape });
+    const beforeLeft = lab.branch(left).headState;
+    const beforeRight = lab.branch(right).headState;
+    const sharedWound = createRandomWound(beforeLeft, beforeRight, {
+      preferTargetDifference: true,
+      random: sequenceRandom(0.42, 0.63),
+    });
+    lab.intervene(left, "wound", sharedWound);
+    lab.intervene(right, "wound", sharedWound);
+
+    for (let step = 0; step < 48; step += 1) {
+      lab.step(left, { alpha: 0.25 });
+      lab.step(right, { alpha: 0.25 });
+    }
+
+    const afterLeft = lab.branch(left).headState;
+    const afterRight = lab.branch(right).headState;
+    assert.ok(
+      maskedFieldDifference(
+        afterLeft.body,
+        afterRight.body,
+        afterLeft.woundMask,
+        afterRight.woundMask,
+      ) > 0.1,
+      `${shape} should redirect repair inside the shared lesion`,
+    );
   }
 });

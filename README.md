@@ -78,3 +78,7 @@ fly deploy
 ```
 
 The API key is supplied as a Fly secret and is never bundled into the browser or committed to Git.
+
+## License
+
+Repair Garden is available under the [MIT License](./LICENSE). Third-party dependencies and vendored components remain subject to their own license notices.

@@ -200,7 +200,7 @@ The package is currently vendored rather than maintained as an independently pub
 - The source of truth is the public GitHub repository.
 - Production is deployed at [repair-garden.fly.dev](https://repair-garden.fly.dev/).
 - The working convention is: change locally, run lint and the complete test suite, push to GitHub, then redeploy to Fly.io.
-- The repository is public but currently has no license. A license and contribution policy should be chosen before accepting substantial outside contributions.
+- The code is available under the permissive [MIT License](./LICENSE). A contribution guide and lightweight governance should be added as collaboration expands.
 
 ## Why productization matters to the science
 
@@ -484,7 +484,7 @@ For code contributions:
 - **Simulation-to-biology gap.** In-silico results generate hypotheses; biological claims require biological evidence.
 - **Narrative overreach.** The Garden Guide and interface copy should continue to distinguish paper claims, reported evidence, model behaviour, and open questions.
 - **Reproducibility drift.** Model, prompt, dependency, and deployment changes should be versioned with replayable experiments.
-- **Collaboration ambiguity.** The public repository currently lacks a license and contribution governance. Resolve both before the collaboration expands materially.
+- **Collaboration governance.** The MIT License establishes reuse terms. Contribution, review, attribution, and maintainer expectations still need a lightweight written policy as collaboration expands.
 
 ## A possible long-term shape
 

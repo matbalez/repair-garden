@@ -4,6 +4,8 @@
 
 The experiment makes a specific causal question visible: can two organisms with the same visible anatomy respond differently because an internal control state has changed?
 
+For the project's motivation, scientific context, research roadmap, and contribution ideas, read the [collaboration brief](./COLLABORATION_BRIEF.md).
+
 ## Try the experiment
 
 1. Apply a shared random calibration wound to both Motes.

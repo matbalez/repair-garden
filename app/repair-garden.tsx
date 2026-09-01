@@ -118,8 +118,15 @@ function PaperIntro({
           <p className="modal-kicker">Before you begin · 2 minute experiment</p>
           <DialogTitle>How can a living system carry its future?</DialogTitle>
           <DialogDescription>
-            A guided thought experiment inspired by <em>Open Questions about
-            Time and Self-reference in Living Systems</em>.
+            A guided thought experiment inspired by{" "}
+            {paper ? (
+              <a href={paper.href} target="_blank" rel="noreferrer">
+                <em>Open Questions about Time and Self-reference in Living Systems</em>
+              </a>
+            ) : (
+              <em>Open Questions about Time and Self-reference in Living Systems</em>
+            )}
+            .
           </DialogDescription>
         </DialogHeader>
 

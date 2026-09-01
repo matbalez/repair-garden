@@ -94,4 +94,8 @@ test("the treatment control exposes three alternative target shapes", async () =
   assert.match(source, /scrollTo\(\{ top: panel\.scrollHeight/);
   assert.match(source, /window\.requestAnimationFrame\(draw\)/);
   assert.match(source, /prefers-reduced-motion/);
+  assert.match(
+    source,
+    /<a href=\{paper\.href\} target="_blank" rel="noreferrer">[\s\S]*?<em>Open Questions about Time and Self-reference in Living Systems<\/em>[\s\S]*?<\/a>/,
+  );
 });

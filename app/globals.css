@@ -1282,6 +1282,19 @@ input {
   line-height: 1.6;
 }
 
+.paper-modal [data-slot="dialog-description"] a {
+  color: #b9d7d3;
+  text-decoration: underline;
+  text-decoration-color: rgba(185, 215, 211, 0.45);
+  text-underline-offset: 3px;
+}
+
+.paper-modal [data-slot="dialog-description"] a:hover,
+.paper-modal [data-slot="dialog-description"] a:focus-visible {
+  color: #e4f5f1;
+  text-decoration-color: currentColor;
+}
+
 .modal-kicker,
 .control-kicker {
   margin: 0 0 5px;

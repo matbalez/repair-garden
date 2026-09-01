@@ -4,7 +4,7 @@
 
 The experiment makes a specific causal question visible: can two organisms with the same visible anatomy respond differently because an internal control state has changed?
 
-For the project's motivation, scientific context, research roadmap, and contribution ideas, read the [collaboration brief](./COLLABORATION_BRIEF.md).
+For the project's motivation, scientific context, research roadmap, and contribution ideas, read the [Temporal Self Lab collaboration brief](https://github.com/matbalez/temporal-self-lab/blob/main/COLLABORATION_BRIEF.md).
 
 ## Try the experiment
 
@@ -41,7 +41,13 @@ This is an engineered cellular model with an explicit target field. It demonstra
 - `lib/garden-model.ts` — local repair dynamics, target shapes, wounds, and measurements
 - `lib/research-guide.ts` — research-grounded instructions and model limits
 - `tests/` — deterministic model, interface, and guide tests
-- `vendor/packages/` — packed `@temporal-self/core` dependency for reproducible installs
+- [`@temporal-self/core`](https://github.com/matbalez/temporal-self-lab) — shared deterministic history, intervention, branch, and replay framework, pinned to the public `v0.1.1` release
+
+## Shared framework
+
+Repair Garden is the first application built on [Temporal Self Lab](https://github.com/matbalez/temporal-self-lab). Its model records ordinary repair steps and controlled interventions through the shared event layer, creates the left treatment and right control as branches of one recorded starting state, and verifies histories through deterministic replay.
+
+Other applications can use the same framework without depending on Repair Garden's cellular model or interface.
 
 ## Run locally
 

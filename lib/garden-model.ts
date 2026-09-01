@@ -152,12 +152,10 @@ export function maskedFieldDifference(
   return difference / Math.max(area, 1);
 }
 
-export function createRandomWound(
+function sharedWoundCandidates(
   left: GardenState,
   right: GardenState,
-  options: RandomWoundOptions = {},
-): WoundPayload {
-  const random = options.random ?? Math.random;
+) {
   const margin = 7;
   const visibleCandidates: GardenPoint[] = [];
   const revealingCandidates: GardenPoint[] = [];
@@ -182,6 +180,38 @@ export function createRandomWound(
     }
   }
 
+  return { margin, revealingCandidates, visibleCandidates };
+}
+
+function woundFromCenter(
+  center: GardenPoint,
+  width: number,
+  height: number,
+  margin: number,
+  random: () => number,
+): WoundPayload {
+  const angle = clamp(random(), 0, 0.999999) * Math.PI;
+  const points = [-4.5, -1.5, 1.5, 4.5].map((offset) => ({
+    x: Math.round(
+      clamp(center.x + Math.cos(angle) * offset, margin, width - margin - 1),
+    ),
+    y: Math.round(
+      clamp(center.y + Math.sin(angle) * offset, margin, height - margin - 1),
+    ),
+  }));
+
+  return { points, radius: 4.2 };
+}
+
+export function createRandomWound(
+  left: GardenState,
+  right: GardenState,
+  options: RandomWoundOptions = {},
+): WoundPayload {
+  const random = options.random ?? Math.random;
+  const { margin, revealingCandidates, visibleCandidates } =
+    sharedWoundCandidates(left, right);
+
   const candidates =
     options.preferTargetDifference && revealingCandidates.length > 0
       ? revealingCandidates
@@ -189,17 +219,32 @@ export function createRandomWound(
   const fallback = { x: Math.round(left.width / 2), y: Math.round(left.height / 2) };
   const unit = clamp(random(), 0, 0.999999);
   const center = candidates[Math.floor(unit * candidates.length)] ?? fallback;
-  const angle = clamp(random(), 0, 0.999999) * Math.PI;
-  const points = [-4.5, -1.5, 1.5, 4.5].map((offset) => ({
-    x: Math.round(
-      clamp(center.x + Math.cos(angle) * offset, margin, left.width - margin - 1),
-    ),
-    y: Math.round(
-      clamp(center.y + Math.sin(angle) * offset, margin, left.height - margin - 1),
-    ),
-  }));
 
-  return { points, radius: 4.2 };
+  return woundFromCenter(center, left.width, left.height, margin, random);
+}
+
+export function createWoundAtPoint(
+  left: GardenState,
+  right: GardenState,
+  point: GardenPoint,
+  options: RandomWoundOptions = {},
+): WoundPayload {
+  const random = options.random ?? Math.random;
+  const { margin, revealingCandidates, visibleCandidates } =
+    sharedWoundCandidates(left, right);
+  const candidates =
+    options.preferTargetDifference && revealingCandidates.length > 0
+      ? revealingCandidates
+      : visibleCandidates;
+  const fallback = { x: Math.round(left.width / 2), y: Math.round(left.height / 2) };
+  const center = candidates.reduce<GardenPoint | null>((closest, candidate) => {
+    if (!closest) return candidate;
+    const closestDistance = Math.hypot(closest.x - point.x, closest.y - point.y);
+    const candidateDistance = Math.hypot(candidate.x - point.x, candidate.y - point.y);
+    return candidateDistance < closestDistance ? candidate : closest;
+  }, null) ?? fallback;
+
+  return woundFromCenter(center, left.width, left.height, margin, random);
 }
 
 function outputFor(state: GardenState, verb: string): GardenOutput {

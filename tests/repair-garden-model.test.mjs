@@ -20,6 +20,7 @@ after(async () => {
 const {
   createGardenLab,
   createRandomWound,
+  createWoundAtPoint,
   fieldDifference,
   gardenMetrics,
   maskedFieldDifference,
@@ -90,6 +91,34 @@ test("each random wound can move while remaining identical across branches", () 
   assert.notDeepEqual(first.points, second.points);
   lab.intervene(left, "wound", first);
   lab.intervene(right, "wound", first);
+  assert.equal(
+    fieldDifference(
+      lab.branch(left).headState.body,
+      lab.branch(right).headState.body,
+    ),
+    0,
+  );
+});
+
+test("a clicked wound uses the nearest shared tissue and stays matched", () => {
+  const lab = createGardenLab(27);
+  const right = lab.rootBranchId;
+  const left = lab.fork(right, { label: "Left treatment" });
+  const leftState = lab.branch(left).headState;
+  const rightState = lab.branch(right).headState;
+  const clicked = { x: 18, y: 17 };
+  const sharedWound = createWoundAtPoint(leftState, rightState, clicked, {
+    random: () => 0.5,
+  });
+
+  const woundCenter = sharedWound.points.reduce(
+    (center, point) => ({ x: center.x + point.x / 4, y: center.y + point.y / 4 }),
+    { x: 0, y: 0 },
+  );
+  assert.ok(Math.hypot(woundCenter.x - clicked.x, woundCenter.y - clicked.y) < 12);
+
+  lab.intervene(left, "wound", sharedWound);
+  lab.intervene(right, "wound", sharedWound);
   assert.equal(
     fieldDifference(
       lab.branch(left).headState.body,

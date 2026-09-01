@@ -65,6 +65,7 @@ test("renders the Repair Garden experiment shell", async () => {
     assert.match(html, /hidden-state perturbation experiment/i);
     assert.match(html, /next_target_shape/i);
     assert.match(html, /Wound both at a random site/i);
+    assert.match(html, /Click to wound both Motes at this location/i);
     assert.match(html, /Garden Guide/i);
     assert.match(html, /Ask the Garden Guide/i);
     assert.doesNotMatch(html, /Same recorded protocol/i);

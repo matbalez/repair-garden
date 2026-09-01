@@ -47,10 +47,13 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   type GardenLab,
+  type GardenPoint,
   type GardenShape,
   type GardenState,
+  type WoundPayload,
   createGardenLab,
   createRandomWound,
+  createWoundAtPoint,
   fieldDifference,
   gardenMetrics,
   maskedFieldDifference,
@@ -234,6 +237,8 @@ function OrganismCanvas({
   roleLabel,
   showTarget,
   perturbed,
+  woundEnabled,
+  onWoundAt,
   pulseKey = 0,
 }: {
   state: GardenState;
@@ -241,6 +246,8 @@ function OrganismCanvas({
   roleLabel: string;
   showTarget: boolean;
   perturbed: boolean;
+  woundEnabled: boolean;
+  onWoundAt: (point: GardenPoint) => void;
   pulseKey?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -411,6 +418,18 @@ function OrganismCanvas({
 
   const metrics = gardenMetrics(state);
   const repair = Math.max(0, Math.min(1, 1 - metrics.error));
+  const canvasLabel = `${label}. ${roleLabel}. Repair ${percent(repair)}. Internal next target is ${state.targetShape}.`;
+
+  const woundAtCanvasPosition = (clientX: number, clientY: number) => {
+    if (!woundEnabled) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const box = canvas.getBoundingClientRect();
+    onWoundAt({
+      x: ((clientX - box.left) / box.width) * state.width,
+      y: ((clientY - box.top) / box.height) * state.height,
+    });
+  };
 
   return (
     <article className={`organism-card ${perturbed ? "is-perturbed" : ""}`}>
@@ -424,9 +443,20 @@ function OrganismCanvas({
       <div className="dish-wrap">
         <canvas
           ref={canvasRef}
-          className="organism-canvas"
-          role="img"
-          aria-label={`${label}. ${roleLabel}. Repair ${percent(repair)}. Internal next target is ${state.targetShape}.`}
+          className={`organism-canvas ${woundEnabled ? "is-enabled" : ""}`}
+          role={woundEnabled ? "button" : "img"}
+          tabIndex={woundEnabled ? 0 : undefined}
+          aria-label={
+            woundEnabled
+              ? `${canvasLabel} Click to wound both Motes at this location.`
+              : canvasLabel
+          }
+          onClick={(event) => woundAtCanvasPosition(event.clientX, event.clientY)}
+          onKeyDown={(event) => {
+            if (!woundEnabled || (event.key !== "Enter" && event.key !== " ")) return;
+            event.preventDefault();
+            onWoundAt({ x: state.width / 2, y: state.height / 2 });
+          }}
         />
         {pulseKey > 0 ? (
           <span key={pulseKey} className="signal-wave" aria-hidden="true" />
@@ -940,18 +970,29 @@ export function RepairGarden() {
     return () => window.clearInterval(timer);
   }, [finishSchedule, lab, leftBranchId, rightBranchId, running, stage, syncViews]);
 
-  const woundBoth = useCallback(() => {
+  const applySharedWound = useCallback((wound: WoundPayload) => {
     if (stage !== "baseline" && stage !== "perturbed") return;
-    const wound = createRandomWound(leftState, rightState, {
-      preferTargetDifference: stage === "perturbed",
-    });
     lab.intervene(leftBranchId, "wound", wound);
     lab.intervene(rightBranchId, "wound", wound);
     syncViews();
     setRemaining(REPAIR_STEPS);
     setRunning(false);
     setStage(stage === "baseline" ? "first-wounded" : "second-wounded");
-  }, [lab, leftBranchId, leftState, rightBranchId, rightState, stage, syncViews]);
+  }, [lab, leftBranchId, rightBranchId, stage, syncViews]);
+
+  const woundBoth = useCallback(() => {
+    const wound = createRandomWound(leftState, rightState, {
+      preferTargetDifference: stage === "perturbed",
+    });
+    applySharedWound(wound);
+  }, [applySharedWound, leftState, rightState, stage]);
+
+  const woundAtPoint = useCallback((point: GardenPoint) => {
+    const wound = createWoundAtPoint(leftState, rightState, point, {
+      preferTargetDifference: stage === "perturbed",
+    });
+    applySharedWound(wound);
+  }, [applySharedWound, leftState, rightState, stage]);
 
   const perturbLeft = useCallback((shape: GardenShape) => {
     if (stage !== "matched") return;
@@ -987,6 +1028,7 @@ export function RepairGarden() {
     rightState.woundMask,
   );
   const perturbed = leftState.targetShape !== rightState.targetShape;
+  const woundEnabled = stage === "baseline" || stage === "perturbed";
   const progressIndex =
     stage === "baseline"
       ? 0
@@ -1049,6 +1091,8 @@ export function RepairGarden() {
               roleLabel="Treatment branch"
               showTarget={showTarget}
               perturbed={perturbed}
+              woundEnabled={woundEnabled}
+              onWoundAt={woundAtPoint}
               pulseKey={pulseKey}
             />
             <OrganismCanvas
@@ -1057,6 +1101,8 @@ export function RepairGarden() {
               roleLabel="Untreated control"
               showTarget={showTarget}
               perturbed={false}
+              woundEnabled={woundEnabled}
+              onWoundAt={woundAtPoint}
             />
           </div>
 

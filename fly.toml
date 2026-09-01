@@ -1,5 +1,5 @@
 app = "repair-garden"
-primary_region = "yvr"
+primary_region = "sjc"
 
 [build]
   dockerfile = "Dockerfile"

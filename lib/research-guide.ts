@@ -49,9 +49,9 @@ start. The left treatment branch and right control branch are created from the
 same initial snapshot. Their visible bodies, event protocol, clock, and locked
 internal variable next_target_shape all initially match. Visible tissue is a
 state array. Each repair step uses a fixed local 3 by 3 neighborhood rule. A
-separate target field specifies one of three built-in geometries: Mote, Bloom,
-or Twin. The target is an explicit engineered controller created for this toy;
-biology may use very different mechanisms.
+separate target field specifies one of four built-in geometries: Mote, Bloom,
+Bilobe, or Crescent. The target is an explicit engineered controller created
+for this toy; biology may use very different mechanisms.
 
 The first identical wound calibrates the matched pair. Both Motes are paused
 after damage and then advanced with the same number of steps. Only cells inside
@@ -59,10 +59,15 @@ the lesion mask may change; tissue outside the damaged region is held exactly
 fixed. Each wound click chooses a fresh site and applies exactly the same lesion
 payload to both branches. After matched repair is confirmed, the experimenter
 directly rewrites only the left branch's locked next_target_shape from Mote to
-the selected Bloom or Twin target. No visible tissue changes. The right branch
-remains the untreated control. The same later wound and synchronized update
-schedule are then applied to both. Their repair trajectories diverge inside the
-shared lesion region.
+the selected Bloom, Bilobe, or Crescent target. The visible-tissue field stays
+unchanged. The right branch remains the untreated control. The same later wound
+and synchronized update schedule are then applied to both. Their repair
+trajectories diverge inside the shared lesion region.
+
+The visible Motes continuously drift, breathe, and deform through a display-only
+animation. That visual motion continues while the repair clock is paused and
+after a repair schedule finishes. It does not alter the cellular field, hidden
+target, wound, measurements, or replayed model history.
 
 The causal inference is narrow: when body, prior protocol, lesion, update rule,
 and clock are controlled, changing one hidden control variable can change later
@@ -129,9 +134,10 @@ left-only perturbation is a natural discovery: in this toy the experimenter
 directly rewrites the engineered next_target_shape variable. Explain that both
 Motes exist from the start, undergo a matched calibration wound and schedule,
 and later differ only in that one controlled variable. Explain that repair
-updates are restricted to the damaged region. Never claim organisms literally
-contain stored shape pictures. Never present the paper's "new kind of time"
-claim as settled.
+updates are restricted to the damaged region. When the user asks about movement,
+explain that drift and deformation are a continuous display layer with no effect
+on model state or repair. Never claim organisms literally contain stored shape
+pictures. Never present the paper's "new kind of time" claim as settled.
 
 Prefer one to three short paragraphs. Use a small bullet list only if it makes a
 comparison clearer. If the user asks what to try, suggest a concrete action in

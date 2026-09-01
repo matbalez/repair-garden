@@ -27,6 +27,8 @@ test("the guide corpus distinguishes target rewriting from learning", async () =
   assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /stronger ontological claim remains unproven/i);
   assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /distributed\s+attractor/i);
   assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /avoid canned contrast formulas/i);
+  assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /Bilobe, or Crescent/i);
+  assert.match(RESEARCH_GUIDE_INSTRUCTIONS, /continuous display layer/i);
 });
 
 test("the guide endpoint fails clearly when no model connection exists", async () => {

@@ -7,7 +7,7 @@ import {
 export const GARDEN_WIDTH = 64;
 export const GARDEN_HEIGHT = 48;
 
-export type GardenShape = "mote" | "bloom" | "twin";
+export type GardenShape = "mote" | "bloom" | "bilobe" | "crescent";
 
 export interface GardenPoint {
   x: number;
@@ -69,11 +69,17 @@ function shapeMargin(shape: GardenShape, x: number, y: number): number {
     return edge - radius;
   }
 
-  if (shape === "twin") {
+  if (shape === "bilobe") {
     const left = 0.48 - Math.hypot(x + 0.31, y * 1.05);
     const right = 0.48 - Math.hypot(x - 0.31, y * 1.05);
     const bridge = 0.17 - Math.hypot(x * 0.5, y * 1.7);
     return Math.max(left, right, bridge);
+  }
+
+  if (shape === "crescent") {
+    const outer = 0.56 - Math.hypot(x + 0.08, y);
+    const innerCutout = Math.hypot(x - 0.2, y + 0.025) - 0.44;
+    return Math.min(outer, innerCutout);
   }
 
   const edge = 0.54 + 0.075 * Math.cos(5 * angle - 0.35);
@@ -403,7 +409,7 @@ export function createGardenLab(seed = 481516): GardenLab {
           "local 3 × 3 neighborhood kernel",
           "growth and decay equation",
           "synchronous update schedule",
-          "three built-in target shapes",
+          "four built-in target shapes",
         ],
         mutableLayers: ["state", "policy"],
       },

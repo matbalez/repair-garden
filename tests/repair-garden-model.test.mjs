@@ -164,8 +164,8 @@ test("matched motes diverge only after a selective hidden-state perturbation", (
   }
 });
 
-test("both selectable targets produce lesion-local divergence", () => {
-  for (const shape of ["bloom", "twin"]) {
+test("every selectable target produces lesion-local divergence", () => {
+  for (const shape of ["bloom", "bilobe", "crescent"]) {
     const lab = createGardenLab(91);
     const right = lab.rootBranchId;
     const left = lab.fork(right, { label: "Left treatment" });

@@ -40,13 +40,17 @@ test("renders the Repair Garden experiment shell", async () => {
   assert.doesNotMatch(html, /Same recorded protocol/i);
 });
 
-test("the treatment control exposes both alternative target shapes", async () => {
+test("the treatment control exposes three alternative target shapes", async () => {
   const source = await readFile(
     fileURLToPath(new URL("../app/repair-garden.tsx", import.meta.url)),
     "utf8",
   );
   assert.match(source, /<SelectItem value="bloom">Bloom<\/SelectItem>/);
-  assert.match(source, /<SelectItem value="twin">Twin<\/SelectItem>/);
+  assert.match(source, /<SelectItem value="bilobe">Bilobe<\/SelectItem>/);
+  assert.match(source, /<SelectItem value="crescent">Crescent<\/SelectItem>/);
+  assert.doesNotMatch(source, /Twin/);
   assert.match(source, /\[showTarget, setShowTarget\] = useState\(true\)/);
   assert.match(source, /scrollTo\(\{ top: panel\.scrollHeight/);
+  assert.match(source, /window\.requestAnimationFrame\(draw\)/);
+  assert.match(source, /prefers-reduced-motion/);
 });

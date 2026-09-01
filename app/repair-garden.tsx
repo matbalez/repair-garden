@@ -78,7 +78,8 @@ const REPAIR_STEPS = 48;
 const SHAPE_LABELS: Record<GardenShape, string> = {
   mote: "mote",
   bloom: "bloom",
-  twin: "twin",
+  bilobe: "bilobe",
+  crescent: "crescent",
 };
 
 function cloneView(state: GardenState): GardenState {
@@ -261,112 +262,165 @@ function OrganismCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const box = canvas.getBoundingClientRect();
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.max(1, Math.round(box.width * ratio));
-    canvas.height = Math.max(1, Math.round(box.height * ratio));
     const context = canvas.getContext("2d");
     if (!context) return;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    let animationFrame = 0;
 
-    const width = box.width;
-    const height = box.height;
-    const cellWidth = width / state.width;
-    const cellHeight = height / state.height;
-    const glow = context.createRadialGradient(
-      width * 0.5,
-      height * 0.47,
-      0,
-      width * 0.5,
-      height * 0.47,
-      width * 0.58,
-    );
-    glow.addColorStop(0, "#0a2830");
-    glow.addColorStop(0.55, "#06181e");
-    glow.addColorStop(1, "#02090d");
-    context.fillStyle = glow;
-    context.fillRect(0, 0, width, height);
+    const draw = (timestamp: number) => {
+      const box = canvas.getBoundingClientRect();
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const pixelWidth = Math.max(1, Math.round(box.width * ratio));
+      const pixelHeight = Math.max(1, Math.round(box.height * ratio));
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+      }
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-    context.strokeStyle = "rgba(132, 230, 222, 0.035)";
-    context.lineWidth = 1;
-    for (let column = 0; column <= state.width; column += 4) {
-      const x = column * cellWidth;
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, height);
-      context.stroke();
-    }
-    for (let row = 0; row <= state.height; row += 4) {
-      const y = row * cellHeight;
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(width, y);
-      context.stroke();
-    }
+      const width = box.width;
+      const height = box.height;
+      const cellWidth = width / state.width;
+      const cellHeight = height / state.height;
+      const seconds = timestamp / 1_000;
+      const glow = context.createRadialGradient(
+        width * 0.5,
+        height * 0.47,
+        0,
+        width * 0.5,
+        height * 0.47,
+        width * 0.58,
+      );
+      glow.addColorStop(0, "#0a2830");
+      glow.addColorStop(0.55, "#06181e");
+      glow.addColorStop(1, "#02090d");
+      context.fillStyle = glow;
+      context.fillRect(0, 0, width, height);
 
-    const phase = state.iteration * 0.075;
-    const driftX = Math.sin(phase) * Math.min(cellWidth * 0.85, 3.2);
-    const driftY = Math.cos(phase * 0.77) * Math.min(cellHeight * 0.65, 2.4);
-    const breath = 1 + Math.sin(phase * 0.48) * 0.006;
-    context.save();
-    context.translate(width / 2 + driftX, height / 2 + driftY);
-    context.scale(breath, breath);
-    context.translate(-width / 2, -height / 2);
+      context.strokeStyle = "rgba(132, 230, 222, 0.035)";
+      context.lineWidth = 1;
+      for (let column = 0; column <= state.width; column += 4) {
+        const x = column * cellWidth;
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, height);
+        context.stroke();
+      }
+      for (let row = 0; row <= state.height; row += 4) {
+        const y = row * cellHeight;
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(width, y);
+        context.stroke();
+      }
 
-    if (showTarget) {
+      const driftX =
+        Math.sin(seconds * 0.42) * Math.min(cellWidth * 1.15, 4.5) +
+        Math.sin(seconds * 0.17 + 1.3) * 1.4;
+      const driftY =
+        Math.cos(seconds * 0.31) * Math.min(cellHeight * 0.9, 3.4) +
+        Math.sin(seconds * 0.13 + 0.6) * 1.1;
+      const breath = 1 + Math.sin(seconds * 0.72) * 0.012;
+      const warpedCell = (column: number, row: number) => {
+        const normalizedX = column / Math.max(state.width - 1, 1) - 0.5;
+        const normalizedY = row / Math.max(state.height - 1, 1) - 0.5;
+        const edgeFlex = 0.45 + Math.min(1, Math.hypot(normalizedX, normalizedY)) * 0.75;
+        const x =
+          column * cellWidth +
+          Math.sin(normalizedY * 8.2 + seconds * 0.74) *
+            cellWidth *
+            0.34 *
+            edgeFlex +
+          Math.sin((normalizedX - normalizedY) * 5.1 - seconds * 0.39) *
+            cellWidth *
+            0.17;
+        const y =
+          row * cellHeight +
+          Math.cos(normalizedX * 7.4 - seconds * 0.61) *
+            cellHeight *
+            0.3 *
+            edgeFlex +
+          Math.sin((normalizedX + normalizedY) * 5.7 + seconds * 0.34) *
+            cellHeight *
+            0.16;
+        const pulse =
+          1 +
+          Math.sin(seconds * 1.05 + column * 0.11 + row * 0.085) * 0.035;
+        return { x, y, pulse };
+      };
+
+      context.save();
+      context.translate(width / 2 + driftX, height / 2 + driftY);
+      context.scale(breath, breath);
+      context.translate(-width / 2, -height / 2);
+
+      if (showTarget) {
+        for (let row = 0; row < state.height; row += 1) {
+          for (let column = 0; column < state.width; column += 1) {
+            const index = row * state.width + column;
+            const target = state.target[index] ?? 0;
+            if (target < 0.08) continue;
+            const cell = warpedCell(column, row);
+            context.fillStyle = `rgba(185, 112, 255, ${target * 0.12})`;
+            context.fillRect(
+              cell.x,
+              cell.y,
+              (cellWidth + 0.7) * cell.pulse,
+              (cellHeight + 0.7) * cell.pulse,
+            );
+          }
+        }
+      }
+
+      context.globalCompositeOperation = "lighter";
       for (let row = 0; row < state.height; row += 1) {
         for (let column = 0; column < state.width; column += 1) {
           const index = row * state.width + column;
-          const target = state.target[index] ?? 0;
-          if (target < 0.08) continue;
-          context.fillStyle = `rgba(185, 112, 255, ${target * 0.12})`;
+          const body = state.body[index] ?? 0;
+          if (body < 0.012) continue;
+          const newness = state.newness[index] ?? 0;
+          const red = Math.round(52 + newness * 196);
+          const green = Math.round(208 + newness * 25);
+          const blue = Math.round(197 - newness * 92);
+          const cell = warpedCell(column, row);
+          context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${0.08 + body * 0.83})`;
           context.fillRect(
-            column * cellWidth,
-            row * cellHeight,
-            cellWidth + 0.5,
-            cellHeight + 0.5,
+            cell.x,
+            cell.y,
+            (cellWidth + 1) * cell.pulse,
+            (cellHeight + 1) * cell.pulse,
           );
         }
       }
-    }
+      context.globalCompositeOperation = "source-over";
 
-    context.globalCompositeOperation = "lighter";
-    for (let row = 0; row < state.height; row += 1) {
-      for (let column = 0; column < state.width; column += 1) {
-        const index = row * state.width + column;
-        const body = state.body[index] ?? 0;
-        if (body < 0.012) continue;
-        const newness = state.newness[index] ?? 0;
-        const red = Math.round(52 + newness * 196);
-        const green = Math.round(208 + newness * 25);
-        const blue = Math.round(197 - newness * 92);
-        context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${0.08 + body * 0.83})`;
-        context.fillRect(
-          column * cellWidth,
-          row * cellHeight,
-          cellWidth + 0.75,
-          cellHeight + 0.75,
-        );
+      for (let row = 0; row < state.height; row += 1) {
+        for (let column = 0; column < state.width; column += 1) {
+          const index = row * state.width + column;
+          const wounded = state.woundMask[index] ?? 0;
+          const body = state.body[index] ?? 0;
+          if (wounded < 0.5 || body > 0.14) continue;
+          const cell = warpedCell(column, row);
+          context.fillStyle = "rgba(255, 83, 123, 0.16)";
+          context.fillRect(
+            cell.x,
+            cell.y,
+            (cellWidth + 0.7) * cell.pulse,
+            (cellHeight + 0.7) * cell.pulse,
+          );
+        }
       }
-    }
-    context.globalCompositeOperation = "source-over";
+      context.restore();
 
-    for (let row = 0; row < state.height; row += 1) {
-      for (let column = 0; column < state.width; column += 1) {
-        const index = row * state.width + column;
-        const wounded = state.woundMask[index] ?? 0;
-        const body = state.body[index] ?? 0;
-        if (wounded < 0.5 || body > 0.14) continue;
-        context.fillStyle = "rgba(255, 83, 123, 0.16)";
-        context.fillRect(
-          column * cellWidth,
-          row * cellHeight,
-          cellWidth + 0.5,
-          cellHeight + 0.5,
-        );
+      if (!reducedMotion) {
+        animationFrame = window.requestAnimationFrame(draw);
       }
-    }
-    context.restore();
+    };
+
+    draw(reducedMotion ? 0 : window.performance.now());
+    return () => window.cancelAnimationFrame(animationFrame);
   }, [showTarget, state]);
 
   const metrics = gardenMetrics(state);
@@ -391,7 +445,7 @@ function OrganismCanvas({
         {pulseKey > 0 ? (
           <span key={pulseKey} className="signal-wave" aria-hidden="true" />
         ) : null}
-        <span className="visible-layer-label">Visible tissue</span>
+        <span className="visible-layer-label">Visible tissue · living motion</span>
       </div>
       <div className="organism-status">
         <span>{roleLabel}</span>
@@ -448,7 +502,7 @@ function StageNarration({
     perturbed: {
       eyebrow: "04 · Selective perturbation",
       title: "One hidden state changed.",
-      body: `The left next_target_shape is now ${SHAPE_LABELS[leftTarget]}. The right remains mote. Visible tissue is unchanged, and both histories remain synchronized up to this intervention.`,
+      body: `The left next_target_shape is now ${SHAPE_LABELS[leftTarget]}. The right remains mote. The visible-tissue field is unchanged, and both histories remain synchronized up to this intervention.`,
       note: "Manipulated variable: left.next_target_shape only.",
     },
     "second-wounded": {
@@ -758,7 +812,8 @@ function ExperimentControls({
               </SelectTrigger>
               <SelectContent className="target-shape-menu">
                 <SelectItem value="bloom">Bloom</SelectItem>
-                <SelectItem value="twin">Twin</SelectItem>
+                <SelectItem value="bilobe">Bilobe</SelectItem>
+                <SelectItem value="crescent">Crescent</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -1109,7 +1164,8 @@ export function RepairGarden() {
           <p>
             <strong>What is manipulated</strong>
             The left branch&apos;s locked next_target_shape can change from mote to
-            Bloom or Twin. The right branch remains the untreated control.
+            Bloom, Bilobe, or Crescent. The right branch remains the untreated
+            control.
           </p>
           <p>
             <strong>What the result supports</strong>
@@ -1119,7 +1175,7 @@ export function RepairGarden() {
         </div>
         <div className="kernel-note">
           <span>Deterministic · lesion-local · replay-verifiable</span>
-          <span>No learning rule is implemented</span>
+          <span>Organic motion is visual; repair advances on model steps</span>
         </div>
       </footer>
     </main>

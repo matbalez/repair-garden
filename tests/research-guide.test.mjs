@@ -106,3 +106,85 @@ test("the guide sends experiment context and returns model text", async () => {
     else delete process.env.OPENAI_API_KEY;
   }
 });
+
+test("the guide rejects oversized request bodies before contacting the model", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  const previousFetch = globalThis.fetch;
+  process.env.OPENAI_API_KEY = "test-key";
+  let fetchCalled = false;
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+    return Response.json({ output_text: "Unexpected" });
+  };
+
+  try {
+    const { POST } = await vite.ssrLoadModule("/app/api/guide/route.ts");
+    const response = await POST(
+      new Request("http://localhost/api/guide", {
+        method: "POST",
+        headers: {
+          "content-length": "70000",
+          "content-type": "application/json",
+          "fly-client-ip": "203.0.113.8",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "A short question" }],
+        }),
+      }),
+    );
+
+    assert.equal(response.status, 413);
+    assert.equal(fetchCalled, false);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+    else delete process.env.OPENAI_API_KEY;
+  }
+});
+
+test("the guide rate-limits repeated questions from one public address", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  const previousFetch = globalThis.fetch;
+  process.env.OPENAI_API_KEY = "test-key";
+  globalThis.fetch = async () =>
+    Response.json({ output_text: "A concise answer." });
+
+  try {
+    const { POST } = await vite.ssrLoadModule("/app/api/guide/route.ts");
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await POST(
+        new Request("http://localhost/api/guide", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "fly-client-ip": "203.0.113.9",
+          },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: `Question ${attempt + 1}` }],
+          }),
+        }),
+      );
+      assert.equal(response.status, 200);
+    }
+
+    const limited = await POST(
+      new Request("http://localhost/api/guide", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "fly-client-ip": "203.0.113.9",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "One question too many" }],
+        }),
+      }),
+    );
+
+    assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers.get("retry-after")) > 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+    else delete process.env.OPENAI_API_KEY;
+  }
+});

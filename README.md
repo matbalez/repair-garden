@@ -1,156 +1,78 @@
 # Repair Garden
 
-Repair Garden is an interactive web experiment about time, memory, repair, and
-counterfactual futures. A visitor wounds a small digital organism, watches it
-repair, forks its history, changes a hidden target in only one branch, and then
-applies the same wound to both branches.
+[Repair Garden](https://repair-garden.fly.dev) is an interactive model of repair under hidden-state perturbation. Two matched digital organisms begin with the same visible tissue and the same internal target. A visitor gives them the same wound and repair schedule, changes the left organism's hidden future target, and then repeats a matched wound to see whether regeneration diverges.
 
-The hinge of the experience is empirical: two pixel-identical visible states
-can produce different futures when a hidden control state differs.
+The experiment makes a specific causal question visible: can two organisms with the same visible anatomy respond differently because an internal control state has changed?
 
-## Product arc
+## Try the experiment
 
-1. Wound a digital organism and watch a local rule repair it.
-2. Fork one recorded moment into two histories.
-3. Apply an invisible policy-layer intervention to one branch.
-4. Give both branches the same damage and update schedule.
-5. Observe divergence, reveal the hidden target, and manipulate it directly.
+1. Apply a shared random calibration wound to both Motes.
+2. Advance their repair together with **Step +1**, **Step +5**, or **Continue**.
+3. Choose Bloom, Bilobe, or Crescent as the left Mote's `next_target_shape`. The right Mote remains the untreated control.
+4. Apply another shared random wound and advance the same schedule on both sides.
+5. Compare regeneration inside the damaged region.
 
-The interface includes a keyboard wound preset, pause/step controls, reduced
-motion support, text equivalents for color-coded values, and an explicit model
-assumptions panel.
+The target overlay is visible by default, and the Garden Guide answers questions using the current experiment state and the research sources behind the project.
 
-## Architecture
+## What the model does
 
-The product consumes `@temporal-self/core` from the separate Temporal Self Lab
-repository. The core provides deterministic execution, event-sourced history,
-fork/replay, interventions, change-layer declarations, and immutable-kernel
-disclosure. Repair Garden contributes one domain model and one educational UI:
+- Starts with two identical visible bodies and identical internal target fields.
+- Applies the same randomly placed lesion to both sides.
+- Restricts repair updates to cells inside the lesion.
+- Lets the visitor perturb one named hidden variable on the left side.
+- Keeps both branches synchronized for step-by-step comparison.
+- Adds continuous, organic display motion without advancing the repair model.
 
-- `lib/garden-model.ts` — transparent local repair dynamics and interventions
-- `app/repair-garden.tsx` — guided experiment, canvas renderer, and open lab
-- `tests/repair-garden-model.test.mjs` — repair, replay, and divergence checks
+This is an engineered cellular model with an explicit target field. It demonstrates a possible causal structure; it does not establish that real cells store anatomical targets in this form. Mote has no learning rule. Its body motion is visual, while repair changes only when the model advances.
 
-The package is vendored as a tarball while the shared API is experimental. That
-keeps this repository reproducible without coupling it to the core source tree.
+## Research sources
 
-## Scientific contract
+- [Time, self-reference, and the biological construction of identity](https://arxiv.org/pdf/2508.11423v2)
+- [Semantic information](https://arxiv.org/abs/1806.08053)
+- [Growing Neural Cellular Automata](https://distill.pub/2020/growing-ca/)
+- [Learning in gene-regulatory networks](https://www.nature.com/articles/s42003-025-08411-2)
 
-This is a toy with an explicit separable target field. It demonstrates how a
-hidden control variable *could* make history causally relevant; it does not
-show that biological systems store shapes in this form. The final screen names
-the real open question: separable target, distributed attractor, or a mixture?
+## Project structure
 
-The fixed remainder is disclosed in-product: grid, neighborhood kernel, update
-equation, schedule, and available target geometries. Mutable state and policy
-layers are recorded separately.
+- `app/repair-garden.tsx` — experiment interface, rendering, narration, and Garden Guide
+- `app/api/guide/route.ts` — server-side OpenAI connection with public-endpoint safeguards
+- `lib/garden-model.ts` — local repair dynamics, target shapes, wounds, and measurements
+- `lib/research-guide.ts` — research-grounded instructions and model limits
+- `tests/` — deterministic model, interface, and guide tests
+- `vendor/packages/` — packed `@temporal-self/core` dependency for reproducible installs
 
-## Prerequisites
+## Run locally
 
-- Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
+Requires Node.js 22.13 or newer.
 
-## Sites Lifecycle
-
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
-
-This starter does not use `wrangler.jsonc`.
-
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
-
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
-
-## Included project shape
-
-- product UI under `app/`
-- simulation model under `lib/garden-model.ts`
-- packed `@temporal-self/core` dependency under `vendor/packages/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+cp .env.example .env.local
+npm ci
+npm run dev
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+Add an OpenAI API key to `.env.local` to enable the Garden Guide. The simulation itself runs without an API key.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+```text
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-5.4-mini
+```
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with
-  `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper
-  module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can
-  prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned
-  `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+Before publishing changes:
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+```bash
+npm run lint
+npm test
+```
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+## Deploy to Fly.io
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+The repository includes a production Dockerfile and `fly.toml` for the `repair-garden` Fly app.
 
-## Diagnostic Commands
+```bash
+fly apps create repair-garden
+fly secrets set OPENAI_API_KEY=your_key_here
+fly deploy
+```
 
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build and verify the rendered development-preview metadata
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-Use build commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
-
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+The API key is supplied as a Fly secret and is never bundled into the browser or committed to Git.

@@ -9,7 +9,6 @@ import {
   FlaskConical,
   Info,
   LoaderCircle,
-  LockKeyhole,
   Pause,
   Play,
   Radio,
@@ -147,15 +146,6 @@ function PaperIntro({
           <span>Compare repair</span>
         </div>
 
-        <div className="modal-boundary">
-          <Info aria-hidden="true" />
-          <p>
-            <strong>Scope of the model.</strong> The internal target in this toy
-            is engineered and explicit. Real cells may organize repair in very
-            different ways. Mote has no learning rule.
-          </p>
-        </div>
-
         <DialogFooter className="paper-modal-actions">
           {paper ? (
             <Button asChild variant="outline">
@@ -233,11 +223,7 @@ function InternalStateCard({
         <code>
           next_target_shape <b>= &quot;{SHAPE_LABELS[state.targetShape]}&quot;</b>
         </code>
-        <small>Distinct from visible tissue</small>
       </div>
-      <span className="lock-pill">
-        <LockKeyhole aria-hidden="true" /> locked
-      </span>
     </section>
   );
 }
@@ -655,11 +641,7 @@ function ResearchGuide({
     <aside className="guide-panel research-guide" aria-label="Garden Guide">
       <header className="guide-header">
         <span className="guide-avatar" aria-hidden="true"><Bot /></span>
-        <div>
-          <strong>Garden Guide</strong>
-          <small>Paper-grounded science companion</small>
-        </div>
-        <span className="guide-status">Live context</span>
+        <strong>Garden Guide</strong>
       </header>
 
       <div ref={guideScrollRef} className="guide-scroll" aria-live="polite">
@@ -705,9 +687,7 @@ function ResearchGuide({
       </div>
 
       <form className="guide-input" onSubmit={askGuide}>
-        <label htmlFor="garden-guide-question">
-          Ask the Garden Guide <span>Enter sends · Shift+Enter adds a line</span>
-        </label>
+        <label htmlFor="garden-guide-question">Ask the Garden Guide</label>
         <div className="guide-composer">
           <Textarea
             id="garden-guide-question"
@@ -1121,63 +1101,6 @@ export function RepairGarden() {
         />
       </section>
 
-      <section className="causal-summary" aria-label="Causal experiment design">
-        <div>
-          <p className="eyebrow">Causal design</p>
-          <h2>Change one hidden variable, then compare repair.</h2>
-        </div>
-        <div className="causal-cards">
-          <article>
-            <span>Controlled</span>
-            <strong>Visible anatomy</strong>
-            <p>Both Motes begin and are wounded in the same observable state.</p>
-          </article>
-          <article>
-            <span>Controlled</span>
-            <strong>History + schedule</strong>
-            <p>Both receive the same lesions and synchronized cellular updates.</p>
-          </article>
-          <article className="manipulation-card">
-            <span>Manipulated</span>
-            <strong>left.next_target_shape</strong>
-            <p>The experimenter changes this locked internal variable only.</p>
-          </article>
-          <article>
-            <span>Measured</span>
-            <strong>Repair inside the lesion</strong>
-            <p>Tissue outside the damaged region cannot drift toward the target.</p>
-          </article>
-        </div>
-      </section>
-
-      <footer className="model-footer">
-        <div>
-          <p className="eyebrow">Model boundary</p>
-          <h2>A transparent causal model</h2>
-        </div>
-        <div className="assumption-grid">
-          <p>
-            <strong>What is fixed</strong>
-            Two synchronized 64 × 48 cellular fields, one local 3 × 3 rule,
-            identical lesion geometry, and the same update clock.
-          </p>
-          <p>
-            <strong>What is manipulated</strong>
-            The left branch&apos;s locked next_target_shape can change from mote to
-            Bloom, Bilobe, or Crescent. The right branch remains the untreated
-            control.
-          </p>
-          <p>
-            <strong>What the result supports</strong>
-            A lesion can reveal the causal effect of hidden organization. Real
-            cells may use different mechanisms, and Mote has no learning rule.
-          </p>
-        </div>
-        <div className="kernel-note">
-          <span>Deterministic · lesion-local · replay-verifiable</span>
-          <span>Organic motion is visual; repair advances on model steps</span>
-        </div>
-      </footer>
     </main>
   );
 }

@@ -66,9 +66,15 @@ test("renders the Repair Garden experiment shell", async () => {
     assert.match(html, /next_target_shape/i);
     assert.match(html, /Wound both at a random site/i);
     assert.match(html, /Garden Guide/i);
-    assert.match(html, /Paper-grounded science companion/i);
     assert.match(html, /Ask the Garden Guide/i);
     assert.doesNotMatch(html, /Same recorded protocol/i);
+    assert.doesNotMatch(html, /Scope of the model/i);
+    assert.doesNotMatch(html, /Distinct from visible tissue/i);
+    assert.doesNotMatch(html, /Paper-grounded science companion/i);
+    assert.doesNotMatch(html, /Live context/i);
+    assert.doesNotMatch(html, /Enter sends/i);
+    assert.doesNotMatch(html, /Causal design/i);
+    assert.doesNotMatch(html, /Model boundary/i);
   } finally {
     server.kill("SIGTERM");
   }
